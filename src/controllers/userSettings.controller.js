@@ -2,7 +2,7 @@ import {
     getUserSettings,
     createOrUpdateUserSettings,
     deleteUserSettings
-  } from '../services/userSettings.service.js';
+  } from '../services/userSettings.services.js';
   
   import { validateUserSettings } from '../validators/userSettings.validator.js';
   
