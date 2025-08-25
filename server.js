@@ -149,8 +149,8 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
-      'https://property-flow-design.vercel.app',
-      'https://escrow-account-ledger.web.app', // Firebase hosting
+      'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
+      'https://property-flow-design.vercel.app', // Vercel frontend
       'http://localhost:3000',
       'http://localhost:5173',
       'http://localhost:8080',
@@ -225,8 +225,8 @@ app.use((req, res, next) => {
   // Allow multiple origins including localhost
   const origin = req.headers.origin;
   const allowedOrigins = [
-    'https://property-flow-design.vercel.app',
-    'https://escrow-account-ledger.web.app', // Firebase hosting
+    'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
+    'https://property-flow-design.vercel.app', // Vercel frontend
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
