@@ -1,0 +1,65 @@
+/**
+ * Dashboard Routes
+ * 
+ * API routes for dashboard statistics and analytics.
+ * Provides real-time data for the dashboard interface.
+ * 
+ * Features:
+ * - Dashboard statistics endpoint
+ * - Analytics and reporting
+ * - Real-time data aggregation
+ * 
+ * @author Account Ledger Team
+ * @version 1.0.0
+ */
+
+const express = require('express');
+const router = express.Router();
+const dashboardController = require('../controllers/dashboard.controller');
+const { authenticateToken } = require('../middlewares/auth');
+
+/**
+ * GET /api/dashboard/stats
+ * 
+ * Retrieves dashboard statistics including:
+ * - Total parties count
+ * - Total transactions count
+ * - Total balance
+ * - Settlement statistics
+ * - Growth metrics
+ * 
+ * @requires Authentication
+ * @returns {Object} Dashboard statistics
+ */
+router.get('/stats', authenticateToken, (req, res) => {
+  dashboardController.getDashboardStats(req, res);
+});
+
+/**
+ * GET /api/dashboard/recent-activity
+ * 
+ * Retrieves recent activity for the current user including:
+ * - Recent transactions
+ * - Recent party creations
+ * - Recent settlements
+ * 
+ * @requires Authentication
+ * @returns {Object} Recent activity data
+ */
+router.get('/recent-activity', authenticateToken, (req, res) => {
+  dashboardController.getRecentActivity(req, res);
+});
+
+/**
+ * GET /api/dashboard/summary-stats
+ * 
+ * Retrieves summary statistics with optional date filtering
+ * 
+ * @requires Authentication
+ * @returns {Object} Summary statistics
+ */
+router.get('/summary-stats', authenticateToken, (req, res) => {
+  dashboardController.getSummaryStats(req, res);
+});
+
+module.exports = router; 
