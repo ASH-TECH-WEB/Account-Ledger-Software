@@ -505,6 +505,15 @@ const updateEntry = async (req, res) => {
       });
     }
 
+    // OLD RECORDS PROTECTION: Prevent modification of old records after Monday Final
+    if (entry.is_old_record === true) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot modify old records. This entry was settled in Monday Final and cannot be changed. Delete the Monday Final entry first to unsettle transactions.',
+        code: 'OLD_RECORD_PROTECTED'
+      });
+    }
+
     // Transform data for Supabase
     const supabaseData = {
       party_name: updateData.partyName || entry.party_name, // Use existing party_name if not provided
@@ -535,7 +544,7 @@ const updateEntry = async (req, res) => {
   } catch (error) {
     console.error('Error updating entry:', error);
     res.status(500).json({
-          success: false,
+      success: false,
       message: 'Failed to update entry'
     });
   }
@@ -757,6 +766,15 @@ const deleteEntry = async (req, res) => {
       });
     }
 
+    // OLD RECORDS PROTECTION: Prevent deletion of old records after Monday Final
+    if (entry.is_old_record === true) {
+      return res.status(403).json({
+        success: false,
+        message: 'Cannot delete old records. This entry was settled in Monday Final and cannot be deleted. Delete the Monday Final entry first to unsettle transactions.',
+        code: 'OLD_RECORD_PROTECTED'
+      });
+    }
+
     // Store party name before deletion for balance recalculation
     const partyName = entry.party_name;
 
@@ -804,6 +822,25 @@ const deleteParties = async (req, res) => {
       return res.status(400).json({
           success: false,
         message: 'No valid parties found for deletion'
+      });
+    }
+
+    // Check for parties with old records (Monday Final settled transactions)
+    const partiesWithOldRecords = [];
+    for (const partyName of validPartyNames) {
+      const entries = await LedgerEntry.findByPartyName(userId, partyName);
+      const hasOldRecords = entries.some(entry => entry.is_old_record === true);
+      if (hasOldRecords) {
+        partiesWithOldRecords.push(partyName);
+      }
+    }
+
+    if (partiesWithOldRecords.length > 0) {
+      return res.status(403).json({
+        success: false,
+        message: `Cannot delete parties with old records. The following parties have Monday Final settled transactions: ${partiesWithOldRecords.join(', ')}. Delete the Monday Final entries first to unsettle transactions.`,
+        code: 'PARTIES_WITH_OLD_RECORDS',
+        partiesWithOldRecords
       });
     }
 
