@@ -19,7 +19,9 @@ const { authenticateToken } = require('../middlewares/auth');
 const {
   getFinalTrialBalance,
   getPartyBalance,
-  generateReport
+  generateReport,
+  clearCache,
+  getPerformanceMetrics
 } = require('../controllers/FinalTrialBalance.controller');
 
 // Apply authentication to all routes
@@ -31,7 +33,13 @@ router.get('/', getFinalTrialBalance);
 // Get trial balance for specific party
 router.get('/party/:partyName', getPartyBalance);
 
-// Generate trial balance report
+// Generate custom trial balance report
 router.post('/report', generateReport);
+
+// Clear cache (for performance optimization)
+router.delete('/cache', clearCache);
+
+// Get performance metrics
+router.get('/performance', getPerformanceMetrics);
 
 module.exports = router; 

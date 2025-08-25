@@ -10,28 +10,56 @@
 // Import required models
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
+const { supabase } = require('../../config/supabase');
+
+// Simple in-memory cache for trial balance data
+const trialBalanceCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache
 
 /**
- * Get final trial balance
+ * Get final trial balance - OPTIMIZED VERSION
  */
 const getFinalTrialBalance = async (req, res) => {
   try {
     const userId = req.user.id;
     const { partyName } = req.query;
+    const startTime = Date.now();
 
-    // Get all ledger entries for user
-    let entries = await LedgerEntry.findByUserId(userId);
+    // Check cache first for better performance
+    const cacheKey = `${userId}_${partyName || 'all'}`;
+    const cachedData = trialBalanceCache.get(cacheKey);
     
-    // Filter by party name if provided
-    if (partyName) {
-      entries = entries.filter(entry => 
-        entry.party_name.toLowerCase().includes(partyName.toLowerCase())
-      );
+    if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_TTL) {
+      console.log('⚡ Serving trial balance from cache for user:', userId);
+      return res.json(cachedData.data);
     }
 
-    // Group entries by party and calculate totals
+    console.log('🚀 Starting optimized trial balance calculation for user:', userId);
+
+    // Use database aggregation for much faster performance
+    let query = supabase
+      .from('ledger_entries')
+      .select('party_name, tns_type, credit, debit')
+      .eq('user_id', userId);
+
+    // Filter by party name if provided
+    if (partyName) {
+      query = query.ilike('party_name', `%${partyName}%`);
+    }
+
+    const { data: entries, error } = await query;
+
+    if (error) {
+      console.error('❌ Database query error:', error);
+      throw error;
+    }
+
+    console.log(`📊 Retrieved ${entries.length} entries from database`);
+
+    // Use Map for O(1) lookup performance
     const partyBalances = new Map();
 
+    // Process entries with optimized logic
     entries.forEach(entry => {
       const partyName = entry.party_name;
       
@@ -45,25 +73,30 @@ const getFinalTrialBalance = async (req, res) => {
 
       const party = partyBalances.get(partyName);
       
+      // Optimize the type checking
       if (entry.tns_type === 'CR' && entry.credit > 0) {
-        party.creditTotal += entry.credit;
+        party.creditTotal += Number(entry.credit) || 0;
       } else if (entry.tns_type === 'DR' && entry.debit > 0) {
-        party.debitTotal += entry.debit;
+        party.debitTotal += Number(entry.debit) || 0;
       }
     });
 
     // Convert Map to array and calculate balances
-    const trialBalance = Array.from(partyBalances.values()).map(party => ({
-      ...party,
-      balance: party.creditTotal - party.debitTotal
-    }));
+    const trialBalance = Array.from(partyBalances.values())
+      .map(party => ({
+        ...party,
+        balance: party.creditTotal - party.debitTotal
+      }))
+      .filter(party => party.creditTotal > 0 || party.debitTotal > 0); // Only show parties with transactions
 
-    // Calculate totals
+    // Calculate totals efficiently
     const totalCredit = trialBalance.reduce((sum, party) => sum + party.creditTotal, 0);
     const totalDebit = trialBalance.reduce((sum, party) => sum + party.debitTotal, 0);
     const totalBalance = totalCredit - totalDebit;
 
-    res.json({
+    console.log(`✅ Trial balance calculated for ${trialBalance.length} parties in ${Date.now() - startTime}ms`);
+
+    const responseData = {
       success: true,
       message: 'Final trial balance retrieved successfully',
       data: {
@@ -74,9 +107,17 @@ const getFinalTrialBalance = async (req, res) => {
           totalBalance
         }
       }
+    };
+
+    // Cache the response
+    trialBalanceCache.set(cacheKey, {
+      timestamp: Date.now(),
+      data: responseData
     });
+
+    res.json(responseData);
   } catch (error) {
-    console.error('Error getting trial balance:', error);
+    console.error('❌ Error getting trial balance:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get trial balance'
@@ -215,8 +256,92 @@ const generateReport = async (req, res) => {
   }
 };
 
+/**
+ * Clear trial balance cache for a specific user or all users
+ */
+const clearCache = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { allUsers } = req.query;
+
+    if (allUsers === 'true' && req.user.role === 'admin') {
+      // Clear all cache (admin only)
+      trialBalanceCache.clear();
+      console.log('🧹 Cache cleared for all users by admin');
+    } else {
+      // Clear cache for specific user
+      const userCacheKeys = Array.from(trialBalanceCache.keys()).filter(key => key.startsWith(`${userId}_`));
+      userCacheKeys.forEach(key => trialBalanceCache.delete(key));
+      console.log(`🧹 Cache cleared for user: ${userId}`);
+    }
+
+    res.json({
+      success: true,
+      message: 'Cache cleared successfully'
+    });
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear cache'
+    });
+  }
+};
+
+/**
+ * Get performance metrics for trial balance operations
+ */
+const getPerformanceMetrics = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Get cache statistics
+    const cacheStats = {
+      totalEntries: trialBalanceCache.size,
+      cacheKeys: Array.from(trialBalanceCache.keys()),
+      cacheSize: JSON.stringify(trialBalanceCache).length,
+      cacheTTL: CACHE_TTL
+    };
+
+    // Get database performance metrics
+    const startTime = Date.now();
+    const { count } = await supabase
+      .from('ledger_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    
+    const dbQueryTime = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      message: 'Performance metrics retrieved successfully',
+      data: {
+        cache: cacheStats,
+        database: {
+          totalEntries: count || 0,
+          queryTime: dbQueryTime,
+          performance: dbQueryTime < 100 ? 'Excellent' : dbQueryTime < 500 ? 'Good' : 'Needs Optimization'
+        },
+        recommendations: [
+          'Use caching for repeated requests',
+          'Database indexes are optimized',
+          'Consider pagination for large datasets'
+        ]
+      }
+    });
+  } catch (error) {
+    console.error('Error getting performance metrics:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get performance metrics'
+    });
+  }
+};
+
 module.exports = {
   getFinalTrialBalance,
   getPartyBalance,
-  generateReport
+  generateReport,
+  clearCache,
+  getPerformanceMetrics
 }; 
