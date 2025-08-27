@@ -296,8 +296,7 @@ const register = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful registration
-    .toISOString()
-    });
+    console.log(`User registered successfully at ${new Date().toISOString()}`);
 
     sendSuccessResponse(res, {
       user: {
@@ -314,8 +313,6 @@ const register = async (req, res) => {
     }, 'User registered successfully', 201);
 
   } catch (error) {
-    });
-    
     // Provide specific error messages
     if (error.message.includes('duplicate key')) {
       sendErrorResponse(res, 400, 'User with this email already exists');
@@ -365,8 +362,7 @@ const googleLogin = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful Google authentication
-    .toISOString()
-    });
+    console.log(`Google authentication successful at ${new Date().toISOString()}`);
 
     sendSuccessResponse(res, {
       user: {
@@ -383,8 +379,6 @@ const googleLogin = async (req, res) => {
     }, 'Google authentication successful');
 
   } catch (error) {
-    });
-    
     sendErrorResponse(res, 500, 'Google authentication failed', error);
   }
 };
@@ -447,9 +441,7 @@ const login = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful login
-    .toISOString(),
-      ip: req.ip
-    });
+    console.log(`User login successful at ${new Date().toISOString()}, IP: ${req.ip}`);
 
     sendSuccessResponse(res, {
       user: {
@@ -466,8 +458,6 @@ const login = async (req, res) => {
     }, 'Login successful');
 
   } catch (error) {
-    });
-    
     if (error.message.includes('rate limit')) {
       sendErrorResponse(res, 429, 'Too many requests. Please try again later.');
     } else if (error.message.includes('locked')) {

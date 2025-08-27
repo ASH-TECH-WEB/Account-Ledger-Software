@@ -12,7 +12,7 @@
 // Import required models and utilities
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
-const { supabase } = require('../../config/supabase');
+const { supabase } = require('../config/supabase');
 
 // Enhanced cache configuration with TTL management
 const trialBalanceCache = new Map();
