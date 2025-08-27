@@ -1,6 +1,8 @@
 /**
  * Account Ledger Software - Backend Server
  * 
+ * 🔄 Force redeploy - Latest route fixes for /api/parties endpoint
+ * 
  * 🔧 TROUBLESHOOTING GUIDE:
  * =========================
  * 
