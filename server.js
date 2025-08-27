@@ -419,6 +419,7 @@ const throttlingMiddleware = (req, res, next) => {
 app.use('/api/authentication', authLimiter);
 app.use('/api/party-ledger', dbOperationLimiter);
 app.use('/api/new-party', dbOperationLimiter);
+app.use('/api/parties', dbOperationLimiter); // Add explicit rate limiting for parties
 app.use('/api/', generalLimiter);
 
 // Apply throttling to all API routes
