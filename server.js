@@ -107,7 +107,7 @@ const performanceMonitor = (req, res, next) => {
     
     // Log performance for login and health endpoints
     if (isLoginEndpoint || isHealthEndpoint) {
-      console.log(`${req.method} ${req.path} - ${res.statusCode} - ${duration}ms`);
+      // Request completed
       
       // Warn for slow requests
       if (duration > 5000) {
@@ -167,8 +167,7 @@ app.use(cors({
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
     } else {
-      console.log('❌ CORS blocked origin:', origin);
-      console.log('💡 Add this origin to allowedOrigins array if needed');
+          // CORS blocked origin
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -526,7 +525,7 @@ app.use('/api/commission-transactions', commissionTransactionRoutes);
  * - If wrong response: Check error handler
  */
 app.use('*', (req, res) => {
-  console.log(`❌ Route not found: ${req.method} ${req.originalUrl}`);
+  // Route not found
   res.status(404).json({
     success: false,
     message: 'Route not found'
@@ -603,29 +602,12 @@ app.use((err, req, res, next) => {
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
-  console.log(`🌐 API base URL: http://localhost:${PORT}/api`);
+  console.log(`🔗 API: http://localhost:${PORT}/api`);
   
   // Test database connections
   const supabaseConnected = await testSupabaseConnection();
   const postgresConnected = await testPostgresConnection();
-  console.log(`🗄️ Supabase: ${supabaseConnected ? 'Connected' : 'Failed'}`);
-  console.log(`🗄️ PostgreSQL: ${postgresConnected ? 'Connected' : 'Failed'}`);
-  console.log(`🛡️ CORS: Enabled for localhost origins`);
-  console.log(`📦 Compression: Enabled (level 2)`);
-  
-  // Performance & Security Features Status
-  console.log(`\n🛡️ PERFORMANCE & SECURITY FEATURES:`);
-  console.log(`   🚦 Rate Limiting: Enabled`);
-  console.log(`      ├─ General API: ${parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300} requests per ${parseInt(process.env.RATE_LIMIT_WINDOW_MS) / (1000 * 60) || 15} minutes`);
-  console.log(`      ├─ Authentication: 10 requests per 15 minutes`);
-  console.log(`      └─ Database Operations: 30 requests per minute`);
-  console.log(`   ⏱️ Request Timeout: 30 seconds`);
-  console.log(`   🔄 Throttling: 60 requests per minute per IP`);
-  console.log(`   🛡️ Helmet Security: Enabled`);
-  console.log(`   📊 Performance Monitoring: Enabled`);
-  console.log(`   🔐 JWT Authentication: Enabled`);
-  console.log(`   🗄️ User Data Isolation: Enabled (per userId)`);
+  console.log(`🗄️ Database: ${supabaseConnected && postgresConnected ? 'Connected' : 'Failed'}`);
 });
 
 module.exports = app; 

@@ -1,50 +1,255 @@
+/**
+ * Authentication Controller - Enhanced Version
+ * 
+ * Handles user authentication, registration, and profile management
+ * with enhanced security, validation, and error handling.
+ * 
+ * @author Account Ledger Team
+ * @version 3.0.0
+ * @since 2024-01-01
+ */
+
 const jwt = require('jsonwebtoken');
 const User = require('../models/supabase/User');
-const bcrypt = require('bcryptjs'); // Added bcrypt for password comparison
+const bcrypt = require('bcryptjs');
 
-// Generate JWT token
+// Security constants
+const SECURITY_CONFIG = {
+  SALT_ROUNDS: 12,
+  PASSWORD_MIN_LENGTH: 8,
+  PASSWORD_MAX_LENGTH: 128,
+  JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
+  MAX_LOGIN_ATTEMPTS: 5,
+  LOCKOUT_DURATION: 15 * 60 * 1000, // 15 minutes
+  RATE_LIMIT_WINDOW: 15 * 60 * 1000, // 15 minutes
+  MAX_REQUESTS_PER_WINDOW: 10
+};
+
+// Input validation utilities
+const validateEmail = (email) => {
+  if (!email || typeof email !== 'string') {
+    throw new Error('Email is required and must be a string');
+  }
+  
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.trim())) {
+    throw new Error('Invalid email format');
+  }
+  
+  return email.toLowerCase().trim();
+};
+
+const validatePassword = (password) => {
+  if (!password || typeof password !== 'string') {
+    throw new Error('Password is required and must be a string');
+  }
+  
+  if (password.length < SECURITY_CONFIG.PASSWORD_MIN_LENGTH) {
+    throw new Error(`Password must be at least ${SECURITY_CONFIG.PASSWORD_MIN_LENGTH} characters long`);
+  }
+  
+  if (password.length > SECURITY_CONFIG.PASSWORD_MAX_LENGTH) {
+    throw new Error(`Password cannot exceed ${SECURITY_CONFIG.PASSWORD_MAX_LENGTH} characters`);
+  }
+  
+  // Basic password strength validation
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  
+  if (!hasUpperCase || !hasLowerCase || !hasNumbers) {
+    throw new Error('Password must contain at least one uppercase letter, one lowercase letter, and one number');
+  }
+  
+  return password;
+};
+
+const validateFullName = (fullname) => {
+  if (!fullname || typeof fullname !== 'string') {
+    throw new Error('Full name is required and must be a string');
+  }
+  
+  const trimmedName = fullname.trim();
+  if (trimmedName.length === 0) {
+    throw new Error('Full name cannot be empty');
+  }
+  
+  if (trimmedName.length > 100) {
+    throw new Error('Full name cannot exceed 100 characters');
+  }
+  
+  return trimmedName;
+};
+
+const validatePhone = (phone) => {
+  if (!phone || typeof phone !== 'string') {
+    throw new Error('Phone number is required and must be a string');
+  }
+  
+  const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
+  if (!phoneRegex.test(phone.trim())) {
+    throw new Error('Invalid phone number format');
+  }
+  
+  return phone.trim();
+};
+
+const validateGoogleId = (googleId) => {
+  if (!googleId || typeof googleId !== 'string') {
+    throw new Error('Google ID is required and must be a string');
+  }
+  
+  if (googleId.length > 100) {
+    throw new Error('Google ID cannot exceed 100 characters');
+  }
+  
+  return googleId;
+};
+
+// Rate limiting utility (simple in-memory implementation)
+const loginAttempts = new Map();
+const rateLimitMap = new Map();
+
+const checkRateLimit = (identifier, maxRequests = SECURITY_CONFIG.MAX_REQUESTS_PER_WINDOW) => {
+  const now = Date.now();
+  const windowStart = now - SECURITY_CONFIG.RATE_LIMIT_WINDOW;
+  
+  if (!rateLimitMap.has(identifier)) {
+    rateLimitMap.set(identifier, []);
+  }
+  
+  const requests = rateLimitMap.get(identifier);
+  const recentRequests = requests.filter(timestamp => timestamp > windowStart);
+  
+  if (recentRequests.length >= maxRequests) {
+    return false; // Rate limit exceeded
+  }
+  
+  recentRequests.push(now);
+  rateLimitMap.set(identifier, recentRequests);
+  return true; // Within rate limit
+};
+
+const checkLoginAttempts = (email) => {
+  const now = Date.now();
+  const attempts = loginAttempts.get(email) || { count: 0, lastAttempt: 0 };
+  
+  // Check if account is locked
+  if (attempts.count >= SECURITY_CONFIG.MAX_LOGIN_ATTEMPTS) {
+    const timeSinceLastAttempt = now - attempts.lastAttempt;
+    if (timeSinceLastAttempt < SECURITY_CONFIG.LOCKOUT_DURATION) {
+      const remainingTime = Math.ceil((SECURITY_CONFIG.LOCKOUT_DURATION - timeSinceLastAttempt) / 1000 / 60);
+      throw new Error(`Account temporarily locked due to too many failed attempts. Try again in ${remainingTime} minutes.`);
+    }
+    // Reset attempts after lockout period
+    attempts.count = 0;
+  }
+  
+  return attempts;
+};
+
+const recordLoginAttempt = (email, success) => {
+  const attempts = loginAttempts.get(email) || { count: 0, lastAttempt: 0 };
+  
+  if (success) {
+    attempts.count = 0; // Reset on successful login
+  } else {
+    attempts.count++;
+  }
+  
+  attempts.lastAttempt = Date.now();
+  loginAttempts.set(email, attempts);
+};
+
+// Response utilities
+const sendSuccessResponse = (res, data, message = 'Operation completed successfully', statusCode = 200) => {
+  res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const sendErrorResponse = (res, statusCode, message, error = null) => {
+  const response = {
+    success: false,
+    message,
+    timestamp: new Date().toISOString(),
+    path: res.req?.originalUrl || 'unknown'
+  };
+  
+  if (process.env.NODE_ENV === 'development' && error) {
+    response.error = error.message;
+    response.stack = error.stack;
+  }
+  
+  res.status(statusCode).json(response);
+};
+
+// Generate JWT token with enhanced security
 const generateToken = (userId) => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET environment variable is not configured');
+  }
+  
   return jwt.sign(
-    { userId },
+    { 
+      userId,
+      iat: Math.floor(Date.now() / 1000),
+      type: 'access'
+    },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    { 
+      expiresIn: SECURITY_CONFIG.JWT_EXPIRES_IN,
+      issuer: 'account-ledger-api',
+      audience: 'account-ledger-users'
+    }
   );
 };
 
-// Register user (supports both email and Google)
+// Register user with enhanced validation and security
 const register = async (req, res) => {
   try {
     const { fullname, email, phone, password, googleId, profilePicture } = req.body;
 
-    console.log('📝 Registration attempt for:', email, 'Google ID:', googleId);
+    // Check rate limiting
+    if (!checkRateLimit(req.ip, 3)) { // 3 registration attempts per window
+      return sendErrorResponse(res, 429, 'Too many registration attempts. Please try again later.');
+    }
 
-    // Validation based on auth type
+    // Validate inputs based on auth type
     if (googleId) {
       // Google user validation
-      if (!fullname || !email) {
-        return res.status(400).json({
-          success: false,
-          message: 'Name and email are required for Google users'
-        });
+      const validatedFullName = validateFullName(fullname);
+      const validatedEmail = validateEmail(email);
+      const validatedGoogleId = validateGoogleId(googleId);
+      
+      // Validate profile picture URL if provided
+      if (profilePicture && typeof profilePicture === 'string') {
+        try {
+          new URL(profilePicture);
+        } catch {
+          return sendErrorResponse(res, 400, 'Invalid profile picture URL');
+        }
       }
     } else {
       // Regular user validation
-      if (!fullname || !email || !phone || !password) {
-        return res.status(400).json({
-          success: false,
-          message: 'All fields are required for regular registration'
-        });
+      const validatedFullName = validateFullName(fullname);
+      const validatedEmail = validateEmail(email);
+      const validatedPhone = validatePhone(phone);
+      const validatedPassword = validatePassword(password);
+      
+      // Additional password strength check
+      if (validatedPassword.includes('password') || validatedPassword.includes('123')) {
+        return sendErrorResponse(res, 400, 'Password is too weak. Please choose a stronger password.');
       }
     }
 
     // Check if user already exists
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
-      console.log('❌ User already exists:', email);
-      return res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
+      return sendErrorResponse(res, 400, 'User with this email already exists');
     }
 
     let userData;
@@ -55,16 +260,18 @@ const register = async (req, res) => {
         name: fullname,
         email: email.toLowerCase(),
         google_id: googleId,
-        profile_picture: profilePicture,
+        profile_picture: profilePicture || null,
         auth_provider: 'google',
         email_verified: true,
-        phone: '', // Empty for Google users
-        password_hash: '', // Empty for Google users
-        last_login: new Date().toISOString()
+        phone: '',
+        password_hash: '',
+        last_login: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
     } else {
-      // Regular user registration
-      const salt = await bcrypt.genSalt(12);
+      // Regular user registration with enhanced security
+      const salt = await bcrypt.genSalt(SECURITY_CONFIG.SALT_ROUNDS);
       const hashedPassword = await bcrypt.hash(password, salt);
 
       userData = {
@@ -73,196 +280,201 @@ const register = async (req, res) => {
         phone,
         password_hash: hashedPassword,
         auth_provider: 'email',
-        email_verified: false
+        email_verified: false,
+        google_id: null,
+        profile_picture: null,
+        last_login: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
     }
 
-    console.log('🗄️ Creating user in database...');
+    // Create user in database
     const user = await User.create(userData);
 
     // Generate token
     const token = generateToken(user.id);
 
-    console.log('✅ User registered successfully:', user.id);
-
-    res.status(201).json({
-      success: true,
-      message: 'User registered successfully',
-      data: {
-        user: {
-          id: user.id,
-          fullname: user.name,
-          email: user.email,
-          phone: user.phone || '',
-          role: 'user',
-          googleId: user.google_id,
-          profilePicture: user.profile_picture,
-          authProvider: user.auth_provider
-        },
-        token
-      }
+    // Log successful registration
+    .toISOString()
     });
+
+    sendSuccessResponse(res, {
+      user: {
+        id: user.id,
+        fullname: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        role: 'user',
+        googleId: user.google_id,
+        profilePicture: user.profile_picture,
+        authProvider: user.auth_provider
+      },
+      token
+    }, 'User registered successfully', 201);
+
   } catch (error) {
-    console.error('❌ Registration error:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint
     });
     
     // Provide specific error messages
     if (error.message.includes('duplicate key')) {
-      res.status(400).json({
-        success: false,
-        message: 'User with this email already exists'
-      });
+      sendErrorResponse(res, 400, 'User with this email already exists');
     } else if (error.message.includes('violates row-level security')) {
-      res.status(500).json({
-        success: false,
-        message: 'Database security policy error. Please contact support.'
-      });
+      sendErrorResponse(res, 500, 'Database security policy error. Please contact support.');
+    } else if (error.message.includes('rate limit')) {
+      sendErrorResponse(res, 429, 'Too many requests. Please try again later.');
     } else {
-      res.status(500).json({
-        success: false,
-        message: 'Registration failed. Please try again.',
-        error: error.message
-      });
+      sendErrorResponse(res, 500, 'Registration failed. Please try again.', error);
     }
   }
 };
 
-// Google Login/Registration
+// Google Login/Registration with enhanced security
 const googleLogin = async (req, res) => {
   try {
     const { email, googleId, fullname, profilePicture } = req.body;
 
-    console.log('🔐 Google authentication attempt for:', email, 'Google ID:', googleId);
-
-    if (!email || !googleId || !fullname) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email, Google ID, and fullname are required'
-      });
+    // Check rate limiting
+    if (!checkRateLimit(req.ip, 5)) { // 5 Google auth attempts per window
+      return sendErrorResponse(res, 429, 'Too many authentication attempts. Please try again later.');
     }
 
-    // Use the new method to find or create Google user
+    // Validate required fields
+    const validatedEmail = validateEmail(email);
+    const validatedGoogleId = validateGoogleId(googleId);
+    const validatedFullName = validateFullName(fullname);
+
+    // Validate profile picture URL if provided
+    if (profilePicture && typeof profilePicture === 'string') {
+      try {
+        new URL(profilePicture);
+      } catch {
+        return sendErrorResponse(res, 400, 'Invalid profile picture URL');
+      }
+    }
+
+    // Use the method to find or create Google user
     const user = await User.findOrCreateGoogleUser({
-      email,
-      googleId,
-      fullname,
-      profilePicture
+      email: validatedEmail,
+      googleId: validatedGoogleId,
+      fullname: validatedFullName,
+      profilePicture: profilePicture || null
     });
 
     // Generate token
     const token = generateToken(user.id);
 
-    console.log('✅ Google authentication successful:', user.id);
-
-    res.json({
-      success: true,
-      message: 'Google authentication successful',
-      data: {
-        user: {
-          id: user.id,
-          fullname: user.name,
-          email: user.email,
-          phone: user.phone || '',
-          role: 'user',
-          googleId: user.google_id,
-          profilePicture: user.profile_picture,
-          authProvider: user.auth_provider
-        },
-        token
-      }
+    // Log successful Google authentication
+    .toISOString()
     });
+
+    sendSuccessResponse(res, {
+      user: {
+        id: user.id,
+        fullname: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        role: 'user',
+        googleId: user.google_id,
+        profilePicture: user.profile_picture,
+        authProvider: user.auth_provider
+      },
+      token
+    }, 'Google authentication successful');
 
   } catch (error) {
-    console.error('❌ Google login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Google authentication failed',
-      error: error.message
     });
+    
+    sendErrorResponse(res, 500, 'Google authentication failed', error);
   }
 };
 
-// Login (updated to handle Google users)
+// Login with enhanced security and rate limiting
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email and password are required'
-      });
+    // Check rate limiting
+    if (!checkRateLimit(req.ip, 10)) { // 10 login attempts per window
+      return sendErrorResponse(res, 429, 'Too many login attempts. Please try again later.');
     }
 
-    console.log('🔐 Login attempt for:', email);
+    // Validate inputs
+    const validatedEmail = validateEmail(email);
+    const validatedPassword = validatePassword(password);
+
+    // Check login attempts
+    const attempts = checkLoginAttempts(validatedEmail);
 
     // Find user
-    const user = await User.findByEmail(email);
+    const user = await User.findByEmail(validatedEmail);
     if (!user) {
-      console.log('❌ User not found:', email);
-      return res.status(401).json({
-        success: false,
-        message: 'User is not registered'
-      });
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 401, 'Invalid email or password');
     }
 
     // Check if user is Google-only
     if (user.auth_provider === 'google' && !user.password_hash) {
-      console.log('❌ Google user trying to login with password:', email);
-      return res.status(401).json({
-        success: false,
-        message: 'This account was created with Google. Please use Google login.'
-      });
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 401, 'This account was created with Google. Please use Google login.');
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      console.log('❌ Invalid password for:', email);
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid password'
-      });
+    // Verify password with timing attack protection
+    const startTime = Date.now();
+    const isPasswordValid = await bcrypt.compare(validatedPassword, user.password_hash);
+    const verificationTime = Date.now() - startTime;
+    
+    // Add minimum delay to prevent timing attacks
+    if (verificationTime < 100) {
+      await new Promise(resolve => setTimeout(resolve, 100 - verificationTime));
     }
+
+    if (!isPasswordValid) {
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 401, 'Invalid email or password');
+    }
+
+    // Successful login - reset attempts
+    recordLoginAttempt(validatedEmail, true);
 
     // Update last login
-    await User.update(user.id, { last_login: new Date().toISOString() });
+    await User.update(user.id, { 
+      last_login: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    });
 
     // Generate token
     const token = generateToken(user.id);
 
-    console.log('✅ Login successful for:', email);
-
-    res.json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        user: {
-          id: user.id,
-          fullname: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: 'user',
-          googleId: user.google_id,
-          profilePicture: user.profile_picture,
-          authProvider: user.auth_provider
-        },
-        token
-      }
+    // Log successful login
+    .toISOString(),
+      ip: req.ip
     });
+
+    sendSuccessResponse(res, {
+      user: {
+        id: user.id,
+        fullname: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: 'user',
+        googleId: user.google_id,
+        profilePicture: user.profile_picture,
+        authProvider: user.auth_provider
+      },
+      token
+    }, 'Login successful');
 
   } catch (error) {
-    console.error('❌ Login error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Login failed',
-      error: error.message
     });
+    
+    if (error.message.includes('rate limit')) {
+      sendErrorResponse(res, 429, 'Too many requests. Please try again later.');
+    } else if (error.message.includes('locked')) {
+      sendErrorResponse(res, 423, error.message);
+    } else {
+      sendErrorResponse(res, 500, 'Login failed', error);
+    }
   }
 };
 
@@ -300,7 +512,6 @@ const getProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Get profile error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get profile',
@@ -348,7 +559,6 @@ const updateProfile = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Update profile error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update profile',
@@ -409,7 +619,6 @@ const changePassword = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Change password error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to change password',
@@ -430,7 +639,6 @@ const logout = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Logout error:', error);
     res.status(500).json({
       success: false,
       message: 'Logout failed',

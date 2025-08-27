@@ -12,7 +12,7 @@ const Party = require('../models/supabase/Party');
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 
 /**
- * Get dashboard statistics with AQC Company balance
+ * Get dashboard statistics with AQC balance
  */
 const getDashboardStats = async (req, res) => {
   try {
@@ -39,7 +39,7 @@ const getDashboardStats = async (req, res) => {
     
     const totalBalance = totalCredit - totalDebit;
 
-    // Calculate AQC Company balance from commission transactions
+    // Calculate AQC balance from commission transactions
     let aqcCompanyBalance = 0;
     let totalCommissionCollected = 0;
     let totalCommissionPaid = 0;
@@ -160,7 +160,6 @@ const getDashboardStats = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting dashboard stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get dashboard statistics',
@@ -200,7 +199,6 @@ const getRecentActivity = async (req, res) => {
       data: recentEntries
     });
   } catch (error) {
-    console.error('Error getting recent activity:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get recent activity'
@@ -283,7 +281,6 @@ const getSummaryStats = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting summary stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get summary statistics'

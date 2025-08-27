@@ -1,236 +1,276 @@
 /**
  * Party Ledger Controller - Supabase Version
  * 
- * Handles party ledger operations using Supabase
+ * Handles party ledger operations using Supabase with enhanced error handling,
+ * input validation, and professional logging.
  * 
  * @author Account Ledger Team
- * @version 2.0.0
+ * @version 3.0.0
+ * @since 2024-01-01
  */
 
-// Import required models
+// Import required models and utilities
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
 
+// Constants for business logic
+const BUSINESS_CONSTANTS = {
+  DEFAULT_STATUS: 'A',
+  DEFAULT_MONDAY_FINAL: 'No',
+  DEFAULT_COMMI_SYSTEM: 'Take',
+  DEFAULT_BALANCE_LIMIT: '0',
+  DEFAULT_COMMISSION: 'No Commission',
+  DEFAULT_RATE: '0',
+  MAX_PARTY_NAME_LENGTH: 100,
+  MAX_ADDRESS_LENGTH: 500,
+  MAX_PHONE_LENGTH: 20,
+  MAX_EMAIL_LENGTH: 100
+};
+
+// Input validation utilities
+const validatePartyName = (partyName) => {
+  if (!partyName || typeof partyName !== 'string') {
+    throw new Error('Party name is required and must be a string');
+  }
+  if (partyName.trim().length === 0) {
+    throw new Error('Party name cannot be empty');
+  }
+  if (partyName.length > BUSINESS_CONSTANTS.MAX_PARTY_NAME_LENGTH) {
+    throw new Error(`Party name cannot exceed ${BUSINESS_CONSTANTS.MAX_PARTY_NAME_LENGTH} characters`);
+  }
+  return partyName.trim();
+};
+
+const validateUserId = (userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Valid user ID is required');
+  }
+  return userId;
+};
+
+const sanitizeInput = (input, maxLength = 1000) => {
+  if (typeof input !== 'string') return input;
+  return input
+    .trim()
+    .replace(/[<>]/g, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+=/gi, '')
+    .substring(0, maxLength);
+};
+
+// Error response utility
+const sendErrorResponse = (res, statusCode, message, error = null) => {
+  const response = {
+    success: false,
+    message,
+    timestamp: new Date().toISOString(),
+    path: res.req?.originalUrl || 'unknown'
+  };
+  
+  if (process.env.NODE_ENV === 'development' && error) {
+    response.error = error.message;
+    response.stack = error.stack;
+  }
+  
+  res.status(statusCode).json(response);
+};
+
+// Success response utility
+const sendSuccessResponse = (res, data, message = 'Operation completed successfully') => {
+  res.json({
+    success: true,
+    message,
+    data,
+    timestamp: new Date().toISOString()
+  });
+};
+
 /**
- * Get all parties for user
+ * Get all parties for user with enhanced error handling
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
  */
 const getAllParties = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
+    
+    // Get parties with error handling
     const parties = await Party.findByUserId(userId);
     
-    // Transform data for frontend compatibility with complete business fields
+    if (!parties) {
+      return sendSuccessResponse(res, [], 'No parties found for user');
+    }
+    
+    // Transform data for frontend compatibility with simplified business fields
     const transformedParties = parties.map(party => ({
       id: party.id,
-      name: party.party_name, // Frontend expects 'name'
-      party_name: party.party_name, // Keep original for compatibility
-      sr_no: party.sr_no,
-      address: party.address,
-      phone: party.phone,
-      email: party.email,
-      companyName: party.company_name || party.party_name,
-      status: party.status || 'A',
-      mondayFinal: party.monday_final || 'No', // Frontend expects 'mondayFinal'
-      commiSystem: party.commi_system || 'Take',
-      balanceLimit: party.balance_limit || '0',
-      mCommission: party.m_commission || 'No Commission',
-      rate: party.rate || '0',
-      // Commission structure
-      selfLD: party.self_ld || { M: '', S: '', A: '', T: '', C: '' },
-      agentLD: party.agent_ld || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      thirdPartyLD: party.third_party_ld || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      selfCommission: party.self_commission || { M: '', S: '' },
-      agentCommission: party.agent_commission || { M: '', S: '' },
-      thirdPartyCommission: party.third_party_commission || { M: '', S: '' },
-      created_at: party.created_at,
-      updated_at: party.updated_at
+      srNo: party.sr_no,
+      partyName: party.party_name,
+      status: party.status || BUSINESS_CONSTANTS.DEFAULT_STATUS,
+      mondayFinal: party.monday_final || BUSINESS_CONSTANTS.DEFAULT_MONDAY_FINAL,
+      commiSystem: party.commi_system || BUSINESS_CONSTANTS.DEFAULT_COMMI_SYSTEM,
+      balanceLimit: party.balance_limit || BUSINESS_CONSTANTS.DEFAULT_BALANCE_LIMIT,
+      mCommission: party.m_commission || BUSINESS_CONSTANTS.DEFAULT_COMMISSION,
+      rate: party.rate || BUSINESS_CONSTANTS.DEFAULT_RATE,
+      createdAt: party.created_at,
+      updatedAt: party.updated_at
     }));
 
-    res.json({
-      success: true,
-      message: 'Parties retrieved successfully',
-      data: transformedParties
-    });
+    sendSuccessResponse(res, transformedParties, 'Parties retrieved successfully');
   } catch (error) {
-    console.error('Error getting parties:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get parties'
-    });
+    sendErrorResponse(res, 500, 'Failed to retrieve parties', error);
   }
 };
 
 /**
- * Get party ledger entries
+ * Get party ledger entries with enhanced validation and error handling
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
  */
 const getPartyLedger = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { partyName } = req.params; // Changed from req.query to req.params
+    const partyName = validatePartyName(req.params.partyName);
+    const userId = validateUserId(req.user.id);
     
-    if (!partyName) {
-      return res.status(400).json({
-        success: false,
-        message: 'Party name is required'
-      });
+    // Validate party exists
+    const party = await Party.findByPartyName(userId, partyName);
+    if (!party) {
+      return sendErrorResponse(res, 404, `Party '${partyName}' not found`);
     }
-
-    console.log(`🔍 Getting ledger for party: ${partyName} (User: ${userId})`);
-
+    
+    // Get all ledger entries for this party
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
-    console.log(`📊 Found ${allEntries?.length || 0} total ledger entries for party: ${partyName}`);
-    console.log('🔍 Raw entries data:', JSON.stringify(allEntries, null, 2));
-    
-    // Separate current entries and old records
+    if (!allEntries || allEntries.length === 0) {
+      return sendSuccessResponse(res, {
+        ledgerEntries: [],
+        oldRecords: [],
+        closingBalance: 0,
+        summary: {
+          totalCredit: 0,
+          totalDebit: 0,
+          calculatedBalance: 0,
+          totalEntries: 0
+        },
+        mondayFinalData: {
+          transactionCount: 0,
+          totalCredit: 0,
+          totalDebit: 0,
+          startingBalance: 0,
+          finalBalance: 0
+        }
+      }, `No ledger entries found for party '${partyName}'`);
+    }
+
+    // Separate current entries from old records
     const currentEntries = allEntries.filter(entry => !entry.is_old_record);
     const oldRecords = allEntries.filter(entry => entry.is_old_record);
-    
-    console.log(`📊 Current entries: ${currentEntries.length}, Old records: ${oldRecords.length}`);
-    console.log('🔍 Current entries:', JSON.stringify(currentEntries, null, 2));
-    console.log('🔍 Old records:', JSON.stringify(oldRecords, null, 2));
-    
-    // Sort entries to maintain original transaction order
-    const sortEntriesByOriginalOrder = (entries) => {
-      return entries.sort((a, b) => {
-        // First sort by date
-        const dateA = new Date(a.date);
-        const dateB = new Date(b.date);
-        
-        if (dateA.getTime() !== dateB.getTime()) {
-          return dateA - dateB; // Oldest date first
-        }
-        
-        // If same date, sort by creation time (original order)
-        // Handle both timestamp and time string formats
-        let timeA = 0;
-        let timeB = 0;
-        
-        if (a.created_at) {
-          // If created_at is a full timestamp (e.g., "2025-08-19T06:17:16.389+00:00")
-          if (a.created_at.includes('T')) {
-            timeA = new Date(a.created_at).getTime();
-          } else {
-            // If created_at is just time (e.g., "06:17:16")
-            timeA = new Date('1970-01-01T' + a.created_at).getTime();
-          }
-        }
-        
-        if (b.created_at) {
-          // If created_at is a full timestamp (e.g., "2025-08-19T06:17:16.389+00:00")
-          if (b.created_at.includes('T')) {
-            timeB = new Date(b.created_at).getTime();
-          } else {
-            // If created_at is just time (e.g., "06:17:16")
-            timeB = new Date('1970-01-01T' + b.created_at).getTime();
-          }
-        }
-        
-        return timeA - timeB; // Earlier creation time first (original order)
-      });
-    };
-    
-    // Sort both arrays to maintain original transaction order
-    const sortedCurrentEntries = sortEntriesByOriginalOrder(currentEntries);
-    const sortedOldRecords = sortEntriesByOriginalOrder(oldRecords);
-    
-    console.log(`📊 Sorted current entries: ${sortedCurrentEntries.length}, Sorted old records: ${sortedOldRecords.length}`);
-    
-    // Log the order of old records for debugging
-    console.log('🔍 Old records in original order:');
-    sortedOldRecords.forEach((entry, index) => {
-      const createdTime = entry.created_at;
-      let timeDisplay = 'N/A';
-      let sortValue = 0;
+
+    // Sort current entries by date and creation time
+    const sortedCurrentEntries = currentEntries.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
       
-      if (createdTime) {
-        if (createdTime.includes('T')) {
-          // Full timestamp
-          const timestamp = new Date(createdTime);
-          timeDisplay = timestamp.toLocaleTimeString();
-          sortValue = timestamp.getTime();
-        } else {
-          // Just time
-          timeDisplay = createdTime;
-          sortValue = new Date('1970-01-01T' + createdTime).getTime();
-        }
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateA - dateB;
       }
       
-      console.log(`  ${index + 1}. Date: ${entry.date}, Time: ${timeDisplay}, Sort Value: ${sortValue}, Type: ${entry.tns_type}, Amount: ${entry.credit || entry.debit}, Remarks: ${entry.remarks}`);
+      const timeA = a.created_at ? new Date('1970-01-01T' + a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date('1970-01-01T' + b.created_at).getTime() : 0;
+      
+      return timeA - timeB;
     });
-    
-    // Calculate closing balance from current entries
+
+    // Sort old records by date and creation time
+    const sortedOldRecords = oldRecords.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+      
+      if (dateA.getTime() !== dateB.getTime()) {
+        return dateA - dateB;
+      }
+      
+      const timeA = a.created_at ? new Date('1970-01-01T' + a.created_at).getTime() : 0;
+      const timeB = b.created_at ? new Date('1970-01-01T' + b.created_at).getTime() : 0;
+      
+      return timeA - timeB;
+    });
+
+    // Calculate closing balance from last transaction
     let closingBalance = 0;
-    let totalCredit = 0;
-    let totalDebit = 0;
-    
-    // Use the last transaction's balance as closing balance
     if (sortedCurrentEntries.length > 0) {
       const lastEntry = sortedCurrentEntries[sortedCurrentEntries.length - 1];
       closingBalance = parseFloat(lastEntry.balance || 0);
-      console.log(`💰 Using last transaction balance as closing balance: ₹${closingBalance}`);
+    } else if (sortedOldRecords.length > 0) {
+      const lastOldEntry = sortedOldRecords[sortedOldRecords.length - 1];
+      closingBalance = parseFloat(lastOldEntry.balance || 0);
     }
-    
-    // Calculate totals for summary (excluding Monday Final settlements)
+
+    // Calculate summary totals (excluding Monday Final Settlement entries)
+    let totalCredit = 0;
+    let totalDebit = 0;
+    let totalEntries = 0;
+
+    // Process current entries for totals
     sortedCurrentEntries.forEach((entry, index) => {
-      // Skip Monday Final settlement entries for totals
       if (entry.remarks?.includes('Monday Final Settlement')) {
-        console.log(`📝 Entry ${index + 1}: ${entry.tns_type} - SKIPPED for totals (Monday Final Settlement)`);
-        return;
+        return; // Skip settlement entries for totals
       }
       
       const entryCredit = parseFloat(entry.credit || 0);
       const entryDebit = parseFloat(entry.debit || 0);
+      const entryBalance = parseFloat(entry.balance || 0);
       
-      if (entry.tns_type === 'CR') {
-        totalCredit += entryCredit;
-      } else if (entry.tns_type === 'DR') {
-        totalDebit += entryDebit;
+      totalCredit += entryCredit;
+      totalDebit += entryDebit;
+      totalEntries++;
+    });
+
+    // Process old records for totals
+    sortedOldRecords.forEach((entry, index) => {
+      if (entry.remarks?.includes('Monday Final Settlement')) {
+        return; // Skip settlement entries for totals
       }
       
-      console.log(`📝 Entry ${index + 1}: ${entry.tns_type} - Credit: ${entryCredit}, Debit: ${entryDebit}, Balance: ${entry.balance || 0}`);
+      const entryCredit = parseFloat(entry.credit || 0);
+      const entryDebit = parseFloat(entry.debit || 0);
+      const entryBalance = parseFloat(entry.balance || 0);
+      
+      totalCredit += entryCredit;
+      totalDebit += entryDebit;
+      totalEntries++;
     });
-    
-    console.log(`💰 Final calculations for ${partyName}:`, {
-      totalCredit,
-      totalDebit,
-      closingBalance,
-      currentEntriesCount: sortedCurrentEntries.length,
-      oldRecordsCount: sortedOldRecords.length
-    });
-    
-    // Transform data to match frontend expected structure
-    const transformedData = {
-      ledgerEntries: sortedCurrentEntries || [],
-      oldRecords: sortedOldRecords || [],
-      closingBalance: closingBalance,
-      summary: {
-        totalCredit: totalCredit,
-        totalDebit: totalDebit,
-        calculatedBalance: closingBalance,
-        totalEntries: sortedCurrentEntries.length,
-        totalOldRecords: sortedOldRecords.length
-      },
-      mondayFinalData: {
-        transactionCount: sortedOldRecords.length,
-        totalCredit: sortedOldRecords.reduce((sum, entry) => sum + parseFloat(entry.credit || 0), 0),
-        totalDebit: sortedOldRecords.reduce((sum, entry) => sum + parseFloat(entry.debit || 0), 0),
-        startingBalance: 0, // Can be calculated if needed
-        finalBalance: closingBalance
-      }
+
+    // Calculate final balance
+    const calculatedBalance = totalCredit - totalDebit;
+
+    // Get Monday Final data
+    const mondayFinalEntries = allEntries.filter(entry => 
+      entry.remarks?.includes('Monday Final Settlement')
+    );
+
+    const mondayFinalData = {
+      transactionCount: mondayFinalEntries.length,
+      totalCredit: mondayFinalEntries.reduce((sum, entry) => sum + parseFloat(entry.credit || 0), 0),
+      totalDebit: mondayFinalEntries.reduce((sum, entry) => sum + parseFloat(entry.debit || 0), 0),
+      startingBalance: mondayFinalEntries.length > 0 ? parseFloat(mondayFinalEntries[0].balance || 0) : 0,
+      finalBalance: mondayFinalEntries.length > 0 ? parseFloat(mondayFinalEntries[mondayFinalEntries.length - 1].balance || 0) : 0
     };
 
-    res.json({
-      success: true,
-      message: 'Ledger entries retrieved successfully',
-      data: transformedData
+    sendSuccessResponse(res, {
+      ledgerEntries: sortedCurrentEntries,
+      oldRecords: sortedOldRecords,
+      closingBalance,
+      summary: {
+        totalCredit,
+        totalDebit,
+        calculatedBalance,
+        totalEntries
+      },
+      mondayFinalData
     });
   } catch (error) {
-    console.error('Error getting ledger entries:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get ledger entries'
-    });
+    sendErrorResponse(res, 500, 'Failed to get party ledger', error);
   }
 };
 
@@ -239,18 +279,8 @@ const getPartyLedger = async (req, res) => {
  */
 const calculateRunningBalance = async (userId, partyName, currentAmount, tnsType) => {
   try {
-    console.log(`🧮 Calculating running balance for ${partyName}:`, {
-      userId,
-      currentAmount,
-      tnsType
-    });
-
     // Get all previous entries for this party (excluding current entry)
     const previousEntries = await LedgerEntry.findByPartyAndUser(userId, partyName);
-    
-    console.log(`📊 Found ${previousEntries.length} previous entries for ${partyName}`);
-    
-    let runningBalance = 0;
     
     // Sort entries by date and creation time for proper chronological order
     const sortedEntries = previousEntries.sort((a, b) => {
@@ -269,12 +299,13 @@ const calculateRunningBalance = async (userId, partyName, currentAmount, tnsType
       return timeA - timeB; // Earlier creation time first (original order)
     });
     
-    // Calculate running balance from previous entries in chronological order
-    sortedEntries.forEach((entry, index) => {
+    let runningBalance = 0;
+    
+    // Recalculate balance for ALL entries in chronological order
+    for (const entry of sortedEntries) {
       // Skip Monday Final settlement entries - they don't affect balance
       if (entry.remarks?.includes('Monday Final Settlement')) {
-        console.log(`📝 Entry ${index + 1}: ${entry.tns_type} - SKIPPED (Monday Final Settlement) - Balance unchanged: ${runningBalance}`);
-        return;
+        continue;
       }
       
       const entryCredit = parseFloat(entry.credit || 0);
@@ -285,9 +316,7 @@ const calculateRunningBalance = async (userId, partyName, currentAmount, tnsType
       } else if (entry.tns_type === 'DR') {
         runningBalance -= entryDebit;
       }
-      
-      console.log(`📝 Entry ${index + 1}: ${entry.tns_type} - Credit: ${entryCredit}, Debit: ${entryDebit}, Running Balance: ${runningBalance}`);
-    });
+    }
     
     // Add current transaction to running balance
     if (tnsType === 'CR') {
@@ -296,11 +325,8 @@ const calculateRunningBalance = async (userId, partyName, currentAmount, tnsType
       runningBalance -= parseFloat(currentAmount || 0);
     }
     
-    console.log(`💰 Final running balance for ${partyName}: ${runningBalance}`);
-    
     return runningBalance;
   } catch (error) {
-    console.error(`❌ Error calculating running balance for ${partyName}:`, error);
     // Return 0 as fallback to prevent transaction failure
     return 0;
   }
@@ -311,34 +337,21 @@ const calculateRunningBalance = async (userId, partyName, currentAmount, tnsType
  */
 const addEntry = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { partyName, date, remarks, tnsType, debit, credit, balance } = req.body;
 
     // Validate required fields
     if (!partyName || !date || !tnsType) {
-      return res.status(400).json({
-        success: false,
-        message: 'Party name, date, and transaction type are required'
-      });
+      return sendErrorResponse(res, 400, 'Party name, date, and transaction type are required');
     }
 
     // Check if party exists
     const parties = await Party.findByUserId(userId);
-    console.log('🔍 All parties for user:', parties.map(p => ({ id: p.id, name: p.party_name })));
     
     const party = parties.find(p => p.party_name === partyName);
-    console.log('🔍 Party lookup result:', { 
-      searchedFor: partyName, 
-      found: party ? { id: party.id, name: party.party_name } : null,
-      allPartyNames: parties.map(p => p.party_name)
-    });
     
     if (!party) {
-      console.log('❌ Party not found:', { partyName, availableParties: parties.map(p => p.party_name) });
-      return res.status(404).json({
-        success: false,
-        message: `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`
-      });
+      return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
     }
 
     // Validate transaction amounts
@@ -346,17 +359,11 @@ const addEntry = async (req, res) => {
     const creditAmount = parseFloat(credit || 0);
     
     if (tnsType === 'CR' && creditAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Credit amount must be greater than 0 for CR transactions'
-      });
+      return sendErrorResponse(res, 400, 'Credit amount must be greater than 0 for CR transactions');
     }
     
     if (tnsType === 'DR' && debitAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Debit amount must be greater than 0 for DR transactions'
-      });
+      return sendErrorResponse(res, 400, 'Debit amount must be greater than 0 for DR transactions');
     }
 
     // Calculate current transaction amount
@@ -365,15 +372,6 @@ const addEntry = async (req, res) => {
     // Calculate running balance automatically
     const calculatedBalance = await calculateRunningBalance(userId, partyName, currentAmount, tnsType);
     
-    console.log(`💰 Balance calculation for ${partyName}:`, {
-      tnsType,
-      currentAmount,
-      calculatedBalance,
-      debitAmount,
-      creditAmount,
-      previousEntries: 'calculated from database'
-    });
-
     // Create ledger entry with calculated balance
     const entryData = {
       user_id: userId,
@@ -391,33 +389,20 @@ const addEntry = async (req, res) => {
       updated_at: new Date().toISOString()
     };
 
-    console.log('📝 Creating ledger entry:', entryData);
-
     const entry = await LedgerEntry.create(entryData);
-    
-    console.log('✅ Ledger entry created successfully:', entry.id);
     
     // Update all subsequent entries' balances for this party
     await updateSubsequentBalances(userId, partyName, entry.id);
     
-    res.status(201).json({
-      success: true,
-      message: `Ledger entry added successfully for ${partyName}`,
-      data: {
-        ...entry,
-        calculatedBalance,
-        partyName,
-        transactionType: tnsType,
-        amount: currentAmount
-      }
-    });
+    sendSuccessResponse(res, {
+      ...entry,
+      calculatedBalance,
+      partyName,
+      transactionType: tnsType,
+      amount: currentAmount
+    }, `Ledger entry added successfully for ${partyName}`);
   } catch (error) {
-    console.error('❌ Error adding ledger entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to add ledger entry',
-      error: error.message
-    });
+    sendErrorResponse(res, 500, 'Failed to add ledger entry', error);
   }
 };
 
@@ -426,7 +411,6 @@ const addEntry = async (req, res) => {
  */
 const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
   try {
-    console.log(`🔄 Updating subsequent balances for ${partyName} after entry ${currentEntryId}`);
     
     // Get ALL entries for this party to recalculate from beginning
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
@@ -448,15 +432,12 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
       return timeA - timeB; // Earlier creation time first (original order)
     });
     
-    console.log(`📊 Total entries for ${partyName}: ${sortedEntries.length}`);
-    
     let runningBalance = 0;
     
     // Recalculate balance for ALL entries in chronological order
     for (const entry of sortedEntries) {
       // Skip Monday Final settlement entries - they don't affect balance
       if (entry.remarks?.includes('Monday Final Settlement')) {
-        console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - SKIPPED (Monday Final Settlement) - Balance unchanged: ${runningBalance}`);
         continue;
       }
       
@@ -469,8 +450,6 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
         runningBalance -= entryDebit;
       }
       
-      console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - Credit: ${entryCredit}, Debit: ${entryDebit}, New Balance: ${runningBalance}`);
-      
       // Update entry with new balance
       await LedgerEntry.update(entry.id, {
         balance: runningBalance,
@@ -478,11 +457,8 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
       });
     }
     
-    console.log(`✅ Final running balance for ${partyName}: ${runningBalance}`);
-    
   } catch (error) {
-    console.error(`❌ Error updating subsequent balances for ${partyName}:`, error);
-  }
+    }
 };
 
 /**
@@ -490,28 +466,19 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
  */
 const updateEntry = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { id } = req.params;
     const updateData = req.body;
     
-    console.log('🔍 Update Entry Request:', { id, updateData, userId });
-
     // Check if entry exists and belongs to user
     const entry = await LedgerEntry.findById(id);
     if (!entry || entry.user_id !== userId) {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
+      return sendErrorResponse(res, 404, 'Entry not found');
     }
 
     // OLD RECORDS PROTECTION: Prevent modification of old records after Monday Final
     if (entry.is_old_record === true) {
-      return res.status(403).json({
-        success: false,
-        message: 'Cannot modify old records. This entry was settled in Monday Final and cannot be changed. Delete the Monday Final entry first to unsettle transactions.',
-        code: 'OLD_RECORD_PROTECTED'
-      });
+      return sendErrorResponse(res, 403, 'Cannot modify old records. This entry was settled in Monday Final and cannot be changed. Delete the Monday Final entry first to unsettle transactions.', { code: 'OLD_RECORD_PROTECTED' });
     }
 
     // Transform data for Supabase
@@ -527,26 +494,15 @@ const updateEntry = async (req, res) => {
       ti: updateData.ti || entry.ti,
       updated_at: new Date().toISOString()
     };
-    
-    console.log('🔍 Original Entry:', entry);
-    console.log('🔍 Transformed Data:', supabaseData);
 
     const updatedEntry = await LedgerEntry.update(id, supabaseData);
     
     // Recalculate balances for all entries of this party after update
     await recalculateAllBalancesForParty(userId, entry.party_name);
     
-    res.json({
-      success: true,
-      message: 'Entry updated successfully with balance recalculation',
-      data: updatedEntry
-    });
+    sendSuccessResponse(res, updatedEntry, 'Entry updated successfully with balance recalculation');
   } catch (error) {
-    console.error('Error updating entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update entry'
-    });
+    sendErrorResponse(res, 500, 'Failed to update entry', error);
   }
 };
 
@@ -581,7 +537,6 @@ const recalculateAllBalancesForParty = async (userId, partyName) => {
     for (const entry of sortedEntries) {
       // Skip Monday Final settlement entries - they don't affect balance
       if (entry.remarks?.includes('Monday Final Settlement')) {
-        console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - SKIPPED (Monday Final Settlement) - Balance unchanged: ${runningBalance}`);
         continue;
       }
       
@@ -598,10 +553,8 @@ const recalculateAllBalancesForParty = async (userId, partyName) => {
       });
     }
     
-    console.log(`🔄 Recalculated balances for ${sortedEntries.length} entries for ${partyName}. Final balance: ${runningBalance}`);
   } catch (error) {
-    console.error('Error recalculating balances for party:', error);
-  }
+    }
 };
 
 /**
@@ -609,7 +562,6 @@ const recalculateAllBalancesForParty = async (userId, partyName) => {
  */
 const recalculatePartyBalances = async (userId, partyName) => {
   try {
-    console.log(`🔄 Recalculating all balances for ${partyName}`);
     
     // Get all entries for this party
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
@@ -631,15 +583,12 @@ const recalculatePartyBalances = async (userId, partyName) => {
       return timeA - timeB; // Earlier creation time first (original order)
     });
     
-    console.log(`📊 Found ${sortedEntries.length} entries for ${partyName}`);
-    
     let runningBalance = 0;
     
     // Recalculate balance for all entries in chronological order
     for (const entry of sortedEntries) {
       // Skip Monday Final settlement entries - they don't affect balance
       if (entry.remarks?.includes('Monday Final Settlement')) {
-        console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - SKIPPED (Monday Final Settlement) - Balance unchanged: ${runningBalance}`);
         continue;
       }
       
@@ -652,8 +601,6 @@ const recalculatePartyBalances = async (userId, partyName) => {
         runningBalance -= entryDebit;
       }
       
-      console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - Credit: ${entryCredit}, Debit: ${entryDebit}, New Balance: ${runningBalance}`);
-      
       // Update entry with new balance
       await LedgerEntry.update(entry.id, {
         balance: runningBalance,
@@ -661,11 +608,9 @@ const recalculatePartyBalances = async (userId, partyName) => {
       });
     }
     
-    console.log(`✅ Final balance for ${partyName}: ${runningBalance}`);
     return runningBalance;
     
   } catch (error) {
-    console.error(`❌ Error recalculating balances for ${partyName}:`, error);
     throw error;
   }
 };
@@ -675,7 +620,7 @@ const recalculatePartyBalances = async (userId, partyName) => {
  */
 const recalculateAllBalances = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     
     // Get all parties for the user
     const parties = await Party.findByUserId(userId);
@@ -709,7 +654,6 @@ const recalculateAllBalances = async (req, res) => {
       for (const entry of sortedEntries) {
         // Skip Monday Final settlement entries - they don't affect balance
         if (entry.remarks?.includes('Monday Final Settlement')) {
-          console.log(`📝 Entry ${entry.id}: ${entry.tns_type} - SKIPPED (Monday Final Settlement) - Balance unchanged: ${runningBalance}`);
           continue;
         }
         
@@ -728,10 +672,9 @@ const recalculateAllBalances = async (req, res) => {
         totalEntriesUpdated++;
       }
       
-      console.log(`🔄 Recalculated balances for ${sortedEntries.length} entries for ${party.party_name}. Final balance: ${runningBalance}`);
     }
 
-    res.json({
+    sendSuccessResponse(res, {
       success: true,
       message: `All balances recalculated successfully for ${parties.length} parties`,
       data: {
@@ -741,11 +684,7 @@ const recalculateAllBalances = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error recalculating all balances:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to recalculate all balances'
-    });
+    sendErrorResponse(res, 500, 'Failed to recalculate all balances', error);
   }
 };
 
@@ -754,25 +693,18 @@ const recalculateAllBalances = async (req, res) => {
  */
 const deleteEntry = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { id } = req.params;
 
     // Check if entry exists and belongs to user
     const entry = await LedgerEntry.findById(id);
     if (!entry || entry.user_id !== userId) {
-      return res.status(404).json({
-        success: false,
-        message: 'Entry not found'
-      });
+      return sendErrorResponse(res, 404, 'Entry not found');
     }
 
     // OLD RECORDS PROTECTION: Prevent deletion of old records after Monday Final
     if (entry.is_old_record === true) {
-      return res.status(403).json({
-        success: false,
-        message: 'Cannot delete old records. This entry was settled in Monday Final and cannot be deleted. Delete the Monday Final entry first to unsettle transactions.',
-        code: 'OLD_RECORD_PROTECTED'
-      });
+      return sendErrorResponse(res, 403, 'Cannot delete old records. This entry was settled in Monday Final and cannot be deleted. Delete the Monday Final entry first to unsettle transactions.', { code: 'OLD_RECORD_PROTECTED' });
     }
 
     // Store party name before deletion for balance recalculation
@@ -783,17 +715,9 @@ const deleteEntry = async (req, res) => {
     // Recalculate balances for all remaining entries of this party
     await recalculateAllBalancesForParty(userId, partyName);
 
-    res.json({
-      success: true,
-      message: 'Entry deleted successfully with balance recalculation',
-      data: { deleted: true }
-    });
+    sendSuccessResponse(res, { deleted: true }, 'Entry deleted successfully with balance recalculation');
   } catch (error) {
-    console.error('Error deleting entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete entry'
-    });
+    sendErrorResponse(res, 500, 'Failed to delete entry', error);
   }
 };
 
@@ -802,14 +726,11 @@ const deleteEntry = async (req, res) => {
  */
 const deleteParties = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { partyNames } = req.body;
 
     if (!partyNames || !Array.isArray(partyNames)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Party names array is required'
-      });
+      return sendErrorResponse(res, 400, 'Party names array is required');
     }
 
     // Get all user parties
@@ -819,10 +740,7 @@ const deleteParties = async (req, res) => {
     );
 
     if (validPartyNames.length === 0) {
-      return res.status(400).json({
-          success: false,
-        message: 'No valid parties found for deletion'
-      });
+      return sendErrorResponse(res, 400, 'No valid parties found for deletion');
     }
 
     // Check for parties with old records (Monday Final settled transactions)
@@ -836,12 +754,7 @@ const deleteParties = async (req, res) => {
     }
 
     if (partiesWithOldRecords.length > 0) {
-      return res.status(403).json({
-        success: false,
-        message: `Cannot delete parties with old records. The following parties have Monday Final settled transactions: ${partiesWithOldRecords.join(', ')}. Delete the Monday Final entries first to unsettle transactions.`,
-        code: 'PARTIES_WITH_OLD_RECORDS',
-        partiesWithOldRecords
-      });
+      return sendErrorResponse(res, 403, `Cannot delete parties with old records. The following parties have Monday Final settled transactions: ${partiesWithOldRecords.join(', ')}. Delete the Monday Final entries first to unsettle transactions.`, { partiesWithOldRecords });
     }
 
     // Delete ledger entries for each party
@@ -860,17 +773,9 @@ const deleteParties = async (req, res) => {
       }
     }
 
-    res.json({
-      success: true,
-      message: `${validPartyNames.length} parties and their entries deleted successfully`,
-      data: { deletedCount: validPartyNames.length }
-    });
+    sendSuccessResponse(res, { deletedCount: validPartyNames.length }, `${validPartyNames.length} parties and their entries deleted successfully`);
   } catch (error) {
-    console.error('Error deleting parties:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete parties'
-    });
+    sendErrorResponse(res, 500, 'Failed to delete parties', error);
   }
 };
 
@@ -879,14 +784,11 @@ const deleteParties = async (req, res) => {
  */
 const unsettleTransactions = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { partyName, settlementDate } = req.body;
 
     if (!partyName || !settlementDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Party name and settlement date are required'
-      });
+      return sendErrorResponse(res, 400, 'Party name and settlement date are required');
     }
 
     // Find and unsettle transactions for the given party and date
@@ -903,17 +805,9 @@ const unsettleTransactions = async (req, res) => {
       }
     }
 
-    res.json({
-      success: true,
-      message: 'Transactions unsettled successfully',
-      data: { unsettledCount: unsettledEntries.length }
-    });
+    sendSuccessResponse(res, { unsettledCount: unsettledEntries.length }, 'Transactions unsettled successfully');
   } catch (error) {
-    console.error('Error unsettling transactions:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to unsettle transactions'
-    });
+    sendErrorResponse(res, 500, 'Failed to unsettle transactions', error);
   }
 };
 
@@ -922,14 +816,11 @@ const unsettleTransactions = async (req, res) => {
  */
 const updateMondayFinal = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { partyNames } = req.body;
 
     if (!partyNames || !Array.isArray(partyNames)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Party names array is required'
-      });
+      return sendErrorResponse(res, 400, 'Party names array is required');
     }
 
     let totalSettledEntries = 0;
@@ -964,10 +855,6 @@ const updateMondayFinal = async (req, res) => {
           const regularTransactions = unsettledEntries.filter(entry => 
             !entry.remarks?.includes('Monday Final Settlement')
           );
-          
-          console.log(`🔍 Settlement Analysis for ${partyName}:`);
-          console.log(`   - Existing Monday Finals to settle: ${existingMondayFinals.length}`);
-          console.log(`   - Regular transactions to settle: ${regularTransactions.length}`);
           
           if (unsettledEntries.length > 0) {
             // Batch update all unsettled entries
@@ -1033,7 +920,6 @@ const updateMondayFinal = async (req, res) => {
             const createdSettlementEntry = await LedgerEntry.create(settlementEntry);
             
             // 6. Update all settled transactions with this Monday Final ID
-            console.log(`🔗 Linking ${unsettledEntries.length} transactions to Monday Final: ${mondayFinalId}`);
             
             const linkPromises = unsettledEntries.map(entry => 
               LedgerEntry.update(entry.id, {
@@ -1043,37 +929,27 @@ const updateMondayFinal = async (req, res) => {
             );
             
             await Promise.all(linkPromises);
-            console.log(`✅ Linked ${unsettledEntries.length} transactions to Monday Final entry ID: ${createdSettlementEntry.id}`);
             
             // Update total count
             totalSettledEntries += unsettledEntries.length;
           }
         }
 
-        console.log(`✅ Monday Final completed for ${partyName}: ${totalSettledEntries} transactions settled`);
       }
     }
 
-    res.json({
-      success: true,
-      message: `Monday Final status updated successfully. ${totalSettledEntries} transactions settled.`,
-      data: {
-        updatedCount: partyNames.length,
-        settledEntries: totalSettledEntries,
-        updatedParties: partyNames,
-        settlementDetails: partyNames.map(partyName => ({
-          partyName,
-          status: 'Settled',
-          settlementDate: new Date().toISOString().split('T')[0]
-        }))
-      }
-    });
+    sendSuccessResponse(res, {
+      updatedCount: partyNames.length,
+      settledEntries: totalSettledEntries,
+      updatedParties: partyNames,
+      settlementDetails: partyNames.map(partyName => ({
+        partyName,
+        status: 'Settled',
+        settlementDate: new Date().toISOString().split('T')[0]
+      }))
+    }, `Monday Final status updated successfully. ${totalSettledEntries} transactions settled.`);
   } catch (error) {
-    console.error('Error updating Monday Final status:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to update Monday Final status'
-    });
+    sendErrorResponse(res, 500, 'Failed to update Monday Final status', error);
   }
 };
 
@@ -1082,25 +958,19 @@ const updateMondayFinal = async (req, res) => {
  */
 const deleteMondayFinalEntry = async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = validateUserId(req.user.id);
     const { entryId } = req.params;
 
     // 1. Find the Monday Final entry
     const mondayFinalEntry = await LedgerEntry.findById(entryId);
     
     if (!mondayFinalEntry || mondayFinalEntry.user_id !== userId) {
-      return res.status(404).json({
-        success: false,
-        message: 'Monday Final entry not found'
-      });
+      return sendErrorResponse(res, 404, 'Monday Final entry not found');
     }
 
     // 2. Check if it's actually a Monday Final entry
     if (!mondayFinalEntry.remarks?.includes('Monday Final Settlement')) {
-      return res.status(400).json({
-        success: false,
-        message: 'This is not a Monday Final entry'
-      });
+      return sendErrorResponse(res, 400, 'This is not a Monday Final entry');
     }
 
     const partyName = mondayFinalEntry.party_name;
@@ -1172,24 +1042,15 @@ const deleteMondayFinalEntry = async (req, res) => {
     // 6. Recalculate balances for the party
     await recalculateAllBalancesForParty(userId, partyName);
 
-    res.json({
-      success: true,
-      message: 'Monday Final entry deleted and transactions unsettled successfully',
-      data: {
-        deletedEntryId: entryId,
-        unsettledTransactions: entriesToUnsettle.length,
-        partyName,
-        settlementDate
-      }
-    });
+    sendSuccessResponse(res, {
+      deletedEntryId: entryId,
+      unsettledTransactions: entriesToUnsettle.length,
+      partyName,
+      settlementDate
+    }, 'Monday Final entry deleted and transactions unsettled successfully');
 
   } catch (error) {
-    console.error('❌ Error deleting Monday Final entry:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete Monday Final entry',
-      error: error.message
-    });
+    sendErrorResponse(res, 500, 'Failed to delete Monday Final entry', error);
   }
 };
 

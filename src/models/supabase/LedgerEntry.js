@@ -131,7 +131,6 @@ class LedgerEntry {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error in findByPartyAndUser:', error);
       return [];
     }
   }
@@ -154,7 +153,6 @@ class LedgerEntry {
       if (error) throw error;
       return data || [];
     } catch (error) {
-      console.error('Error in findByPartyAndUserAfterDate:', error);
       return [];
     }
   }

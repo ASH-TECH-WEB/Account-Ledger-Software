@@ -1,85 +1,298 @@
+/**
+ * New Party Controller - Enhanced Version
+ * 
+ * Handles party creation, management, and SR number generation
+ * with enhanced validation, error handling, and business logic.
+ * 
+ * @author Account Ledger Team
+ * @version 3.0.0
+ * @since 2024-01-01
+ */
+
 const Party = require('../models/supabase/Party');
 
-// Input sanitization function
-const sanitizeInput = (input) => {
+// Business constants
+const BUSINESS_CONSTANTS = {
+  SR_NO_MIN_LENGTH: 3,
+  SR_NO_MAX_LENGTH: 10,
+  PARTY_NAME_MAX_LENGTH: 100,
+  ADDRESS_MAX_LENGTH: 500,
+  PHONE_MAX_LENGTH: 20,
+  EMAIL_MAX_LENGTH: 100,
+  COMPANY_NAME_MAX_LENGTH: 150,
+  DEFAULT_STATUS: 'A',
+  DEFAULT_MONDAY_FINAL: 'No',
+  DEFAULT_COMMI_SYSTEM: 'Take',
+  DEFAULT_BALANCE_LIMIT: '0',
+  DEFAULT_COMMISSION: 'No Commission',
+  DEFAULT_RATE: '0',
+  MAX_SEARCH_LENGTH: 100,
+  DEFAULT_PAGE_SIZE: 50,
+  MAX_PAGE_SIZE: 100
+};
+
+// Input validation utilities
+const validatePartyName = (partyName) => {
+  if (!partyName || typeof partyName !== 'string') {
+    throw new Error('Party name is required and must be a string');
+  }
+  
+  const trimmedName = partyName.trim();
+  if (trimmedName.length === 0) {
+    throw new Error('Party name cannot be empty');
+  }
+  
+  if (trimmedName.length > BUSINESS_CONSTANTS.PARTY_NAME_MAX_LENGTH) {
+    throw new Error(`Party name cannot exceed ${BUSINESS_CONSTANTS.PARTY_NAME_MAX_LENGTH} characters`);
+  }
+  
+  // Check for potentially malicious content
+  if (/[<>]/.test(trimmedName) || /javascript:/i.test(trimmedName)) {
+    throw new Error('Party name contains invalid characters');
+  }
+  
+  return trimmedName;
+};
+
+const validateSrNo = (srNo) => {
+  if (!srNo || typeof srNo !== 'string') {
+    throw new Error('SR number is required and must be a string');
+  }
+  
+  const trimmedSrNo = srNo.trim();
+  if (trimmedSrNo.length === 0) {
+    throw new Error('SR number cannot be empty');
+  }
+  
+  if (trimmedSrNo.length < BUSINESS_CONSTANTS.SR_NO_MIN_LENGTH) {
+    throw new Error(`SR number must be at least ${BUSINESS_CONSTANTS.SR_NO_MIN_LENGTH} characters long`);
+  }
+  
+  if (trimmedSrNo.length > BUSINESS_CONSTANTS.SR_NO_MAX_LENGTH) {
+    throw new Error(`SR number cannot exceed ${BUSINESS_CONSTANTS.SR_NO_MAX_LENGTH} characters`);
+  }
+  
+  // Check if SR number contains only alphanumeric characters and hyphens
+  if (!/^[a-zA-Z0-9-]+$/.test(trimmedSrNo)) {
+    throw new Error('SR number can only contain letters, numbers, and hyphens');
+  }
+  
+  return trimmedSrNo;
+};
+
+const validateAddress = (address) => {
+  if (!address || typeof address !== 'string') {
+    return '';
+  }
+  
+  const trimmedAddress = address.trim();
+  if (trimmedAddress.length > BUSINESS_CONSTANTS.ADDRESS_MAX_LENGTH) {
+    throw new Error(`Address cannot exceed ${BUSINESS_CONSTANTS.ADDRESS_MAX_LENGTH} characters`);
+  }
+  
+  return trimmedAddress;
+};
+
+const validatePhone = (phone) => {
+  if (!phone || typeof phone !== 'string') {
+    return '';
+  }
+  
+  const trimmedPhone = phone.trim();
+  if (trimmedPhone.length > BUSINESS_CONSTANTS.PHONE_MAX_LENGTH) {
+    throw new Error(`Phone number cannot exceed ${BUSINESS_CONSTANTS.PHONE_MAX_LENGTH} characters`);
+  }
+  
+  // Basic phone number validation
+  const phoneRegex = /^[\+]?[1-9][\d\s\-\(\)]{0,19}$/;
+  if (trimmedPhone.length > 0 && !phoneRegex.test(trimmedPhone)) {
+    throw new Error('Invalid phone number format');
+  }
+  
+  return trimmedPhone;
+};
+
+const validateEmail = (email) => {
+  if (!email || typeof email !== 'string') {
+    return '';
+  }
+  
+  const trimmedEmail = email.trim();
+  if (trimmedEmail.length > BUSINESS_CONSTANTS.EMAIL_MAX_LENGTH) {
+    throw new Error(`Email cannot exceed ${BUSINESS_CONSTANTS.EMAIL_MAX_LENGTH} characters`);
+  }
+  
+  if (trimmedEmail.length > 0) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      throw new Error('Invalid email format');
+    }
+  }
+  
+  return trimmedEmail;
+};
+
+const validateCompanyName = (companyName) => {
+  if (!companyName || typeof companyName !== 'string') {
+    return '';
+  }
+  
+  const trimmedCompanyName = companyName.trim();
+  if (trimmedCompanyName.length > BUSINESS_CONSTANTS.COMPANY_NAME_MAX_LENGTH) {
+    throw new Error(`Company name cannot exceed ${BUSINESS_CONSTANTS.COMPANY_NAME_MAX_LENGTH} characters`);
+  }
+  
+  return trimmedCompanyName;
+};
+
+const validateSearchQuery = (search) => {
+  if (!search || typeof search !== 'string') {
+    return '';
+  }
+  
+  const trimmedSearch = search.trim();
+  if (trimmedSearch.length > BUSINESS_CONSTANTS.MAX_SEARCH_LENGTH) {
+    throw new Error(`Search query cannot exceed ${BUSINESS_CONSTANTS.MAX_SEARCH_LENGTH} characters`);
+  }
+  
+  return trimmedSearch;
+};
+
+const validatePagination = (page, limit) => {
+  const pageNum = parseInt(page) || 1;
+  const limitNum = parseInt(limit) || BUSINESS_CONSTANTS.DEFAULT_PAGE_SIZE;
+  
+  if (pageNum < 1) {
+    throw new Error('Page number must be greater than 0');
+  }
+  
+  if (limitNum < 1 || limitNum > BUSINESS_CONSTANTS.MAX_PAGE_SIZE) {
+    throw new Error(`Limit must be between 1 and ${BUSINESS_CONSTANTS.MAX_PAGE_SIZE}`);
+  }
+  
+  return { page: pageNum, limit: limitNum };
+};
+
+// Input sanitization function with enhanced security
+const sanitizeInput = (input, maxLength = 1000) => {
   if (typeof input !== 'string') return input;
+  
   return input
     .trim()
     .replace(/[<>]/g, '') // Remove potential HTML tags
     .replace(/javascript:/gi, '') // Remove javascript: protocol
     .replace(/on\w+=/gi, '') // Remove event handlers
-    .substring(0, 1000); // Limit length
+    .replace(/data:/gi, '') // Remove data URLs
+    .replace(/vbscript:/gi, '') // Remove VBScript
+    .substring(0, maxLength);
 };
 
-// Get next SR number
+// Response utilities
+const sendSuccessResponse = (res, data, message = 'Operation completed successfully', statusCode = 200) => {
+  res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+    timestamp: new Date().toISOString()
+  });
+};
+
+const sendErrorResponse = (res, statusCode, message, error = null) => {
+  const response = {
+    success: false,
+    message,
+    timestamp: new Date().toISOString(),
+    path: res.req?.originalUrl || 'unknown'
+  };
+  
+  if (process.env.NODE_ENV === 'development' && error) {
+    response.error = error.message;
+    response.stack = error.stack;
+  }
+  
+  res.status(statusCode).json(response);
+};
+
+// Get next SR number with enhanced validation and error handling
 const getNextSrNo = async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log(`🔍 Getting next SR number for user: ${userId}`);
+    
+    if (!userId) {
+      return sendErrorResponse(res, 401, 'User not authenticated');
+    }
 
-    // Find the highest SR number for THIS SPECIFIC USER only
+    // Get parties for user with error handling
     const parties = await Party.findByUserId(userId);
-    console.log(`📊 Found ${parties?.length || 0} parties for user`);
+    
+    if (!parties) {
+      return sendSuccessResponse(res, { nextSrNo: '001' }, 'No existing parties found, starting with 001');
+    }
     
     let nextSrNo = '001';
     
-    if (parties && parties.length > 0) {
-      console.log(`📝 Parties found:`, parties.map(p => ({ id: p.id, sr_no: p.sr_no, party_name: p.party_name })));
-      
+    if (parties.length > 0) {
       // Filter parties for this user and sort by sr_no
       const userParties = parties.filter(party => party.user_id === userId);
-      console.log(`👤 User-specific parties: ${userParties.length}`);
       
       if (userParties.length > 0) {
         // Sort by sr_no and get the highest for this user
         const sortedParties = userParties.sort((a, b) => {
           const aNum = parseInt(a.sr_no || '0');
           const bNum = parseInt(b.sr_no || '0');
-          console.log(`🔢 Comparing: ${a.sr_no} (${aNum}) vs ${b.sr_no} (${bNum})`);
           return bNum - aNum;
         });
         
         const lastParty = sortedParties[0];
-        console.log(`🏆 Last party:`, lastParty);
         
         if (lastParty && lastParty.sr_no) {
           const lastNumber = parseInt(lastParty.sr_no);
-          nextSrNo = String(lastNumber + 1).padStart(3, '0');
-          console.log(`📈 Last number: ${lastNumber}, Next: ${nextSrNo}`);
+          if (!isNaN(lastNumber)) {
+            nextSrNo = String(lastNumber + 1).padStart(3, '0');
+          }
         }
       }
     }
 
-    console.log(`🎯 User ${userId}: Final Next SR Number = ${nextSrNo}`);
-
-    res.json({
-      success: true,
-      message: 'Next SR number retrieved successfully',
-      data: { nextSrNo }
-    });
+    sendSuccessResponse(res, { nextSrNo }, 'Next SR number retrieved successfully');
   } catch (error) {
-    console.error('❌ Error getting next SR number:', error);
-    console.error('Error stack:', error.stack);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get next SR number',
-      error: error.message
-    });
+    sendErrorResponse(res, 500, 'Failed to get next SR number', error);
   }
 };
 
-// Get all parties for user
+// Get all parties for user with enhanced filtering and pagination
 const getAllParties = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { search, status, page = 1, limit = 50 } = req.query;
+    
+    if (!userId) {
+      return sendErrorResponse(res, 401, 'User not authenticated');
+    }
+    
+    const { search, status, page, limit } = req.query;
 
+    // Validate and sanitize inputs
+    const validatedSearch = validateSearchQuery(search);
+    const { page: validatedPage, limit: validatedLimit } = validatePagination(page, limit);
+    
     // Get parties for user
     let parties = await Party.findByUserId(userId);
     
+    if (!parties) {
+      return sendSuccessResponse(res, {
+        parties: [],
+        pagination: {
+          currentPage: validatedPage,
+          totalPages: 0,
+          totalItems: 0,
+          itemsPerPage: validatedLimit
+        }
+      }, 'No parties found');
+    }
+    
     // Apply search filter if provided
-    if (search) {
-      const sanitizedSearch = sanitizeInput(search);
+    if (validatedSearch) {
+      const sanitizedSearch = sanitizeInput(validatedSearch);
       parties = parties.filter(party => 
         party.party_name?.toLowerCase().includes(sanitizedSearch.toLowerCase()) ||
         party.sr_no?.toLowerCase().includes(sanitizedSearch.toLowerCase())
@@ -87,59 +300,46 @@ const getAllParties = async (req, res) => {
     }
 
     // Apply status filter if provided
-    if (status) {
+    if (status && ['A', 'I'].includes(status)) {
       parties = parties.filter(party => party.status === status);
     }
 
     // Calculate pagination
     const total = parties.length;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedParties = parties.slice(skip, skip + parseInt(limit));
+    const skip = (validatedPage - 1) * validatedLimit;
+    const paginatedParties = parties.slice(skip, skip + validatedLimit);
 
-    // Transform data for frontend compatibility with complete business fields
+    // Transform data for frontend compatibility with simplified business fields
     const transformedParties = paginatedParties.map(party => ({
       id: party.id,
-      name: party.party_name, // Frontend expects 'name'
-      party_name: party.party_name, // Keep original for compatibility
+      name: party.party_name,
+      party_name: party.party_name,
       sr_no: party.sr_no,
-      address: party.address,
-      phone: party.phone,
-      email: party.email,
+      address: party.address || '',
+      phone: party.phone || '',
+      email: party.email || '',
       companyName: party.company_name || party.party_name,
-      status: party.status || 'A',
-      mondayFinal: party.monday_final || 'No', // Frontend expects 'mondayFinal'
-      commiSystem: party.commi_system || 'Take',
-      balanceLimit: party.balance_limit || '0',
-      mCommission: party.m_commission || 'No Commission',
-      rate: party.rate || '0',
-      // Commission structure
-      selfLD: party.self_ld || { M: '', S: '', A: '', T: '', C: '' },
-      agentLD: party.agent_ld || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      thirdPartyLD: party.third_party_ld || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      selfCommission: party.self_commission || { M: '', S: '' },
-      agentCommission: party.agent_commission || { M: '', S: '' },
-      thirdPartyCommission: party.third_party_commission || { M: '', S: '' },
+      status: party.status || BUSINESS_CONSTANTS.DEFAULT_STATUS,
+      mondayFinal: party.monday_final || BUSINESS_CONSTANTS.DEFAULT_MONDAY_FINAL,
+      commiSystem: party.commi_system || BUSINESS_CONSTANTS.DEFAULT_COMMI_SYSTEM,
+      balanceLimit: party.balance_limit || BUSINESS_CONSTANTS.DEFAULT_BALANCE_LIMIT,
+      mCommission: party.m_commission || BUSINESS_CONSTANTS.DEFAULT_COMMISSION,
+      rate: party.rate || BUSINESS_CONSTANTS.DEFAULT_RATE,
       created_at: party.created_at,
       updated_at: party.updated_at
     }));
 
-    res.json({
-      success: true,
-      message: 'Parties retrieved successfully',
-      data: transformedParties,
+    sendSuccessResponse(res, {
+      parties: transformedParties,
       pagination: {
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(total / parseInt(limit)),
+        currentPage: validatedPage,
+        totalPages: Math.ceil(total / validatedLimit),
         totalItems: total,
-        itemsPerPage: parseInt(limit)
+        itemsPerPage: validatedLimit
       }
-    });
+    }, 'Parties retrieved successfully');
   } catch (error) {
-    console.error('Error getting parties:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get parties'
-    });
+    sendErrorResponse(res, 500, 'Failed to get parties', error);
   }
 };
 
@@ -160,20 +360,16 @@ const getPartyById = async (req, res) => {
     // Transform party for frontend compatibility
     const transformedParty = {
       id: party.id,
-      name: party.party_name, // Frontend expects 'name'
-      party_name: party.party_name, // Keep original for compatibility
-      sr_no: party.sr_no,
-      address: party.address,
-      phone: party.phone,
-      email: party.email,
-      status: party.status || 'A',
-      mondayFinal: party.monday_final || 'No', // Frontend expects 'mondayFinal'
+      srNo: party.sr_no,
+      partyName: party.party_name,
+      status: party.status || 'R',
       commiSystem: party.commi_system || 'Take',
       balanceLimit: party.balance_limit || '0',
       mCommission: party.m_commission || 'No Commission',
       rate: party.rate || '0',
-      created_at: party.created_at,
-      updated_at: party.updated_at
+      mondayFinal: party.monday_final || 'No',
+      createdAt: party.created_at,
+      updatedAt: party.updated_at
     };
 
     res.json({
@@ -205,13 +401,7 @@ const createParty = async (req, res) => {
       mCommission: req.body.mCommission || 'No Commission',
       balanceLimit: req.body.balanceLimit || '0',
       rate: req.body.rate || '0',
-      // Initialize nested objects if not provided
-      selfLD: req.body.selfLD || { M: '', S: '', A: '', T: '', C: '' },
-      agentLD: req.body.agentLD || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      thirdPartyLD: req.body.thirdPartyLD || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      selfCommission: req.body.selfCommission || { M: '', S: '' },
-      agentCommission: req.body.agentCommission || { M: '', S: '' },
-      thirdPartyCommission: req.body.thirdPartyCommission || { M: '', S: '' }
+
     };
 
     // Validate required fields
@@ -254,28 +444,17 @@ const createParty = async (req, res) => {
       });
     }
 
-    // Transform data for Supabase with complete business fields
+    // Transform data for Supabase with only the fields sent by frontend
     const supabaseData = {
       user_id: userId,
       party_name: partyData.partyName,
       sr_no: partyData.srNo,
-      address: partyData.address || '',
-      phone: partyData.phone || '',
-      email: partyData.email || '',
-      company_name: partyData.companyName || partyData.partyName, // Company name
-      status: partyData.status || 'A',
+      status: partyData.status || 'R',
       commi_system: partyData.commiSystem || 'Take',
       balance_limit: partyData.balanceLimit || '0',
       m_commission: partyData.mCommission || 'No Commission',
       rate: partyData.rate || '0',
       monday_final: partyData.mondayFinal || 'No',
-      // Commission structure
-      self_ld: partyData.selfLD || { M: '', S: '', A: '', T: '', C: '' },
-      agent_ld: partyData.agentLD || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      third_party_ld: partyData.thirdPartyLD || { name: '', M: '', S: '', A: '', T: '', C: '' },
-      self_commission: partyData.selfCommission || { M: '', S: '' },
-      agent_commission: partyData.agentCommission || { M: '', S: '' },
-      third_party_commission: partyData.thirdPartyCommission || { M: '', S: '' },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -285,20 +464,16 @@ const createParty = async (req, res) => {
     // Transform created party for frontend compatibility
     const transformedParty = {
       id: party.id,
-      name: party.party_name, // Frontend expects 'name'
-      party_name: party.party_name, // Keep original for compatibility
-      sr_no: party.sr_no,
-      address: party.address,
-      phone: party.phone,
-      email: party.email,
-      status: party.status || 'A',
-      mondayFinal: party.monday_final || 'No', // Frontend expects 'mondayFinal'
+      srNo: party.sr_no,
+      partyName: party.party_name,
+      status: party.status || 'R',
       commiSystem: party.commi_system || 'Take',
       balanceLimit: party.balance_limit || '0',
       mCommission: party.m_commission || 'No Commission',
       rate: party.rate || '0',
-      created_at: party.created_at,
-      updated_at: party.updated_at
+      mondayFinal: party.monday_final || 'No',
+      createdAt: party.created_at,
+      updatedAt: party.updated_at
     };
 
     res.status(201).json({
@@ -383,13 +558,16 @@ const updateParty = async (req, res) => {
       }
     }
 
-    // Transform data for Supabase
+    // Transform data for Supabase with simplified fields
     const supabaseData = {
       party_name: updateData.partyName,
       sr_no: updateData.srNo,
-      address: updateData.address,
-      phone: updateData.phone,
-      email: updateData.email,
+      status: updateData.status,
+      commi_system: updateData.commiSystem,
+      balance_limit: updateData.balanceLimit,
+      m_commission: updateData.mCommission,
+      rate: updateData.rate,
+      monday_final: updateData.mondayFinal,
       updated_at: new Date().toISOString()
     };
 
@@ -398,20 +576,16 @@ const updateParty = async (req, res) => {
     // Transform updated party for frontend compatibility
     const transformedParty = {
       id: updatedParty.id,
-      name: updatedParty.party_name, // Frontend expects 'name'
-      party_name: updatedParty.party_name, // Keep original for compatibility
-      sr_no: updatedParty.sr_no,
-      address: updatedParty.address,
-      phone: updatedParty.phone,
-      email: updatedParty.email,
-      status: updatedParty.status || 'A',
-      mondayFinal: updatedParty.monday_final || 'No', // Frontend expects 'mondayFinal'
+      srNo: updatedParty.sr_no,
+      partyName: updatedParty.party_name,
+      status: updatedParty.status || 'R',
       commiSystem: updatedParty.commi_system || 'Take',
       balanceLimit: updatedParty.balance_limit || '0',
       mCommission: updatedParty.m_commission || 'No Commission',
       rate: updatedParty.rate || '0',
-      created_at: updatedParty.created_at,
-      updated_at: updatedParty.updated_at
+      mondayFinal: updatedParty.monday_final || 'No',
+      createdAt: updatedParty.created_at,
+      updatedAt: updatedParty.updated_at
     };
 
     res.json({

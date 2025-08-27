@@ -253,7 +253,6 @@ const createCommissionTransaction = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error creating commission transaction:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create commission transaction',
@@ -318,7 +317,6 @@ const getAllCommissionTransactions = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting commission transactions:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get commission transactions'
@@ -380,7 +378,6 @@ const getCommissionTransaction = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting commission transaction:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get commission transaction'
@@ -389,7 +386,7 @@ const getCommissionTransaction = async (req, res) => {
 };
 
 /**
- * Get commission transaction summary with AQC Company balance
+ * Get commission transaction summary with AQC balance
  */
 const getCommissionTransactionSummary = async (req, res) => {
   try {
@@ -415,7 +412,7 @@ const getCommissionTransactionSummary = async (req, res) => {
       entry.remarks && entry.remarks.includes('Commission Transaction')
     );
 
-    // Calculate AQC Company balance from commission transactions
+    // Calculate AQC balance from commission transactions
     let aqcCompanyBalance = 0;
     let totalCommissionCollected = 0;
     let totalCommissionPaid = 0;
@@ -562,7 +559,6 @@ const getCommissionTransactionSummary = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error getting commission transaction summary:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get commission transaction summary',
@@ -626,7 +622,6 @@ const cancelCommissionTransaction = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error cancelling commission transaction:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to cancel commission transaction'

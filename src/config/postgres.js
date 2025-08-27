@@ -18,10 +18,8 @@ const testConnection = async () => {
     const client = await pool.connect();
     const result = await client.query('SELECT NOW()');
     client.release();
-    console.log('✅ PostgreSQL connected successfully');
     return true;
   } catch (error) {
-    console.error('❌ PostgreSQL connection failed:', error.message);
     return false;
   }
 };
@@ -31,7 +29,6 @@ const getConnection = async () => {
   try {
     return await pool.connect();
   } catch (error) {
-    console.error('❌ Failed to get PostgreSQL connection:', error.message);
     throw error;
   }
 };
