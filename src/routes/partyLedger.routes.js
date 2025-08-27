@@ -5,7 +5,7 @@
  * in the Account Ledger Software.
  * 
  * Endpoints:
- * - GET /parties - Get all parties for ledger view
+ * - GET / - Get all parties for ledger view
  * - GET /:partyName - Get ledger entries for specific party
  * - POST /entry - Add new ledger entry
  * - PUT /entry/:id - Update ledger entry
@@ -37,7 +37,7 @@ const {
 router.use(authenticateToken);
 
 // Get all parties for ledger
-router.get('/parties', getAllParties);
+router.get('/', getAllParties);
 
 // Get ledger for specific party
 router.get('/:partyName', getPartyLedger);
