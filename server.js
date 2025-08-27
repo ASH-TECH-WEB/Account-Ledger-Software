@@ -505,8 +505,8 @@ app.get('/health', (req, res) => {
  * - If authentication fails: Check middleware
  */
 app.use('/api/authentication', authRoutes);
-app.use('/api/parties', partyLedgerRoutes); // Add direct parties route
 app.use('/api/new-party', newPartyRoutes);
+app.use('/api/parties', partyLedgerRoutes);
 app.use('/api/party-ledger', partyLedgerRoutes);
 app.use('/api/final-trial-balance', finalTrialBalanceRoutes);
 app.use('/api/settings', userSettingsRoutes);
