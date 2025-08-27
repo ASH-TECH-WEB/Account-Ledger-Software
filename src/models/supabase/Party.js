@@ -36,6 +36,22 @@ class Party {
     }
   }
 
+  static async findByPartyName(userId, partyName) {
+    try {
+      const { data, error } = await supabase
+        .from('parties')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('party_name', partyName)
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
   static async findById(id) {
     try {
       const { data, error } = await supabase
