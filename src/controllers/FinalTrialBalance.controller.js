@@ -281,6 +281,11 @@ const getFinalTrialBalance = async (req, res) => {
       const debit = Number(entry.debit) || 0;
       const remarks = entry.remarks || '';
       
+      // Skip Monday Final Settlement entries for trial balance
+      if (remarks.includes('Monday Final Settlement')) {
+        return; // Skip this entry
+      }
+      
       // Processing transaction
       
       // Check if this is a commission transaction
