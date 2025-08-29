@@ -16,12 +16,8 @@ const LedgerEntry = require('../src/models/LedgerEntry');
 
 const migrateData = async () => {
   try {
-    console.log('🚀 Starting migration from MongoDB to Supabase...');
-
     // Connect to MongoDB
     await mongoose.connect(process.env.MONGODB_URI);
-    console.log('✅ Connected to MongoDB');
-
     // Test Supabase connection
     const { data: testData, error: testError } = await supabase
       .from('users')
@@ -32,10 +28,7 @@ const migrateData = async () => {
       console.error('❌ Supabase connection failed:', testError.message);
       return;
     }
-    console.log('✅ Connected to Supabase');
-
     // Migrate Users
-    console.log('\n📦 Migrating users...');
     const users = await User.find({});
     let migratedUsers = 0;
     
@@ -55,16 +48,11 @@ const migrateData = async () => {
 
         if (!error) {
           migratedUsers++;
-          console.log(`✅ Migrated user: ${user.email}`);
-        }
+          }
       } catch (error) {
-        console.log(`⚠️ Skipped user ${user.email}: ${error.message}`);
-      }
+        }
     }
-    console.log(`✅ Migrated ${migratedUsers} users`);
-
     // Migrate Parties
-    console.log('\n📦 Migrating parties...');
     const parties = await NewParty.find({});
     let migratedParties = 0;
     
@@ -86,16 +74,11 @@ const migrateData = async () => {
 
         if (!error) {
           migratedParties++;
-          console.log(`✅ Migrated party: ${party.partyName}`);
-        }
+          }
       } catch (error) {
-        console.log(`⚠️ Skipped party ${party.partyName}: ${error.message}`);
-      }
+        }
     }
-    console.log(`✅ Migrated ${migratedParties} parties`);
-
     // Migrate Ledger Entries
-    console.log('\n📦 Migrating ledger entries...');
     const entries = await LedgerEntry.find({});
     let migratedEntries = 0;
     
@@ -125,27 +108,16 @@ const migrateData = async () => {
         if (!error) {
           migratedEntries++;
           if (migratedEntries % 100 === 0) {
-            console.log(`✅ Migrated ${migratedEntries} entries...`);
-          }
+            }
         }
       } catch (error) {
-        console.log(`⚠️ Skipped entry ${entry._id}: ${error.message}`);
-      }
+        }
     }
-    console.log(`✅ Migrated ${migratedEntries} ledger entries`);
-
-    console.log('\n🎉 Migration completed successfully!');
-    console.log(`📊 Summary:`);
-    console.log(`   - Users: ${migratedUsers}`);
-    console.log(`   - Parties: ${migratedParties}`);
-    console.log(`   - Ledger Entries: ${migratedEntries}`);
-
-  } catch (error) {
+    } catch (error) {
     console.error('❌ Migration failed:', error.message);
   } finally {
     await mongoose.disconnect();
-    console.log('🔌 Disconnected from MongoDB');
-  }
+    }
 };
 
 // Run migration if this file is executed directly

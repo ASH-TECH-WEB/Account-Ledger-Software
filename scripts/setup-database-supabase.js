@@ -11,8 +11,6 @@ const path = require('path');
 
 const setupDatabase = async () => {
   try {
-    console.log('🚀 Setting up database schema using Supabase...');
-
     // Test connection first
     const { data: testData, error: testError } = await supabase
       .from('users')
@@ -23,11 +21,7 @@ const setupDatabase = async () => {
       console.error('❌ Supabase connection failed:', testError.message);
       return;
     }
-    console.log('✅ Supabase connection successful');
-
     // Create tables using Supabase client
-    console.log('📋 Creating database tables...');
-
     // Create users table
     try {
       const { error } = await supabase.rpc('exec_sql', {
@@ -43,10 +37,8 @@ const setupDatabase = async () => {
           );
         `
       });
-      if (!error) console.log('✅ Users table created');
-    } catch (error) {
-      console.log('⚠️ Users table already exists or error:', error.message);
-    }
+      if (!error) } catch (error) {
+      }
 
     // Create parties table
     try {
@@ -72,10 +64,8 @@ const setupDatabase = async () => {
           );
         `
       });
-      if (!error) console.log('✅ Parties table created');
-    } catch (error) {
-      console.log('⚠️ Parties table already exists or error:', error.message);
-    }
+      if (!error) } catch (error) {
+      }
 
     // Create ledger_entries table
     try {
@@ -101,15 +91,10 @@ const setupDatabase = async () => {
           );
         `
       });
-      if (!error) console.log('✅ Ledger entries table created');
+      if (!error) } catch (error) {
+      }
+
     } catch (error) {
-      console.log('⚠️ Ledger entries table already exists or error:', error.message);
-    }
-
-    console.log('\n🎉 Database setup completed!');
-    console.log('✅ All tables created successfully');
-
-  } catch (error) {
     console.error('❌ Database setup failed:', error.message);
   }
 };

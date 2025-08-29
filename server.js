@@ -161,7 +161,9 @@ app.use(cors({
       'http://127.0.0.1:5000',
       'http://localhost:4173', // Vite preview port
       'http://127.0.0.1:4173',
-      'http://localhost:5004'  // Vite preview port
+      'http://localhost:5004',  // Vite preview port
+      'http://localhost:3001',  // Alternative port
+      'http://127.0.0.1:3001'  // Alternative port
     ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
@@ -231,7 +233,9 @@ app.use((req, res, next) => {
     'http://127.0.0.1:3000',
     'http://127.0.0.1:5173',
     'http://127.0.0.1:8080',
-    'http://localhost:5000'
+    'http://localhost:5000',
+    'http://localhost:3001',
+    'http://127.0.0.1:3001'
   ];
   
   if (allowedOrigins.includes(origin)) {

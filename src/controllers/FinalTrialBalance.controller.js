@@ -570,6 +570,22 @@ const forceRefreshTrialBalance = async (req, res) => {
   try {
     const userId = req.user.id;
     
+    // Get user's company name from settings for proper filtering
+    let userCompanyName = null;
+    try {
+      const { data: userSettings } = await supabase
+        .from('user_settings')
+        .select('company_account')
+        .eq('user_id', userId)
+        .single();
+      
+      if (userSettings && userSettings.company_account) {
+        userCompanyName = userSettings.company_account;
+      }
+    } catch (error) {
+      // Use default company name if settings not found
+    }
+    
     // Clear cache for this user
     invalidateCache(userId);
     
