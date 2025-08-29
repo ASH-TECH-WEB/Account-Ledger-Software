@@ -296,7 +296,7 @@ const register = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful registration
-    .toISOString()}`);
+    console.log(`✅ User registered successfully: ${email} at ${new Date().toISOString()}`);
 
     sendSuccessResponse(res, {
       user: {
@@ -362,7 +362,7 @@ const googleLogin = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful Google authentication
-    .toISOString()}`);
+    console.log(`✅ Google authentication successful: ${email} at ${new Date().toISOString()}`);
 
     sendSuccessResponse(res, {
       user: {
@@ -441,7 +441,7 @@ const login = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful login
-    .toISOString()}, IP: ${req.ip}`);
+    console.log(`✅ User login successful: ${email} at ${new Date().toISOString()}, IP: ${req.ip}`);
 
     sendSuccessResponse(res, {
       user: {

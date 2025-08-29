@@ -149,22 +149,20 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-      const allowedOrigins = [
-    'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
-    'https://property-flow-design.vercel.app', // Vercel frontend
-    'https://account-ledger-software.vercel.app', // Vercel backend domain
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://localhost:8080',
-    'http://localhost:5000',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:8080',
-    'http://127.0.0.1:5000',
-    'http://localhost:4173', // Vite preview port
-    'http://127.0.0.1:4173',
-    'http://localhost:5004'  // Vite preview port
-  ];
+    const allowedOrigins = [
+      'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
+      'http://localhost:3000',
+      'http://localhost:5173',
+      'http://localhost:8080',
+      'http://localhost:5000',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:8080',
+      'http://127.0.0.1:5000',
+      'http://localhost:4173', // Vite preview port
+      'http://127.0.0.1:4173',
+      'http://localhost:5004'  // Vite preview port
+    ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
@@ -227,8 +225,6 @@ app.use((req, res, next) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
     'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
-    'https://property-flow-design.vercel.app', // Vercel frontend
-    'https://account-ledger-software.vercel.app', // Vercel backend domain
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',

@@ -433,15 +433,9 @@ const addEntry = async (req, res) => {
     
     // Debug logging for virtual parties
     if (isVirtualParty) {
-      .toISOString(),
-        isVirtualParty: true,
-        userId
-      });
+      console.log(`🔍 Virtual party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: true, userId: ${userId}`);
     } else {
-      .toISOString(),
-        isVirtualParty: false,
-        userId
-      });
+      console.log(`🔍 Regular party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: false, userId: ${userId}`);
     }
     
     // Update all subsequent entries' balances for this party

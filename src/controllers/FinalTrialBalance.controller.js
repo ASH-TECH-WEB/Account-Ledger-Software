@@ -272,14 +272,6 @@ const getFinalTrialBalance = async (req, res) => {
 
     // Entries fetched successfully
     
-    // Debug: Log what entries we're getting
-    .map(e => ({
-      party_name: e.party_name,
-      credit: e.credit,
-      debit: e.debit,
-      remarks: e.remarks
-    })));
-
     // Process entries to get individual transactions for trial balance
     const partyTransactions = new Map(); // Use Map to group by party name
 
@@ -346,9 +338,6 @@ const getFinalTrialBalance = async (req, res) => {
     const trialBalance = Array.from(partyTransactions.values())
       .filter(party => party.creditTotal > 0 || party.debitTotal > 0); // Only show parties with transactions
     
-    // Debug: Log what parties we're creating
-    ));
-
     // Transactions processed successfully
     
     // Commission and Comp transactions processed
@@ -688,8 +677,6 @@ const forceRefreshTrialBalance = async (req, res) => {
       }
     };
 
-    - startTime}ms`);
-    
     sendSuccessResponse(res, responseData, 'Trial balance force refreshed successfully');
 
   } catch (error) {
