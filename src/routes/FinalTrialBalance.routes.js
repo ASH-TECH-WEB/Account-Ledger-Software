@@ -21,7 +21,8 @@ const {
   getPartyBalance,
   generateReport,
   clearCache,
-  getPerformanceMetrics
+  getPerformanceMetrics,
+  forceRefreshTrialBalance
 } = require('../controllers/FinalTrialBalance.controller');
 
 // Apply authentication to all routes
@@ -29,6 +30,9 @@ router.use(authenticateToken);
 
 // Get final trial balance
 router.get('/', getFinalTrialBalance);
+
+// Force refresh trial balance (bypass cache for real-time updates)
+router.get('/refresh', forceRefreshTrialBalance);
 
 // Get trial balance for specific party
 router.get('/party/:partyName', getPartyBalance);

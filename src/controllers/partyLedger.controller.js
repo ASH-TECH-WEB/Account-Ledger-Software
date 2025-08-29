@@ -12,6 +12,7 @@
 // Import required models and utilities
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
+const { invalidateCache } = require('./FinalTrialBalance.controller');
 
 // Constants for business logic
 const BUSINESS_CONSTANTS = {
@@ -133,10 +134,31 @@ const getPartyLedger = async (req, res) => {
     const userId = validateUserId(req.user.id);
     
     // Validate party exists
-    const party = await Party.findByPartyName(userId, partyName);
-    if (!party) {
-      return sendErrorResponse(res, 404, `Party '${partyName}' not found`);
-    }
+    const parties = await Party.findByUserId(userId);
+    
+    // Allow virtual parties dynamically without database validation
+    const isVirtualParty = partyName.toLowerCase().includes('commission') ||
+                          partyName.toLowerCase().includes('aqc') ||
+                          partyName.toLowerCase().includes('company') ||
+                          partyName.toLowerCase().includes('comp') ||
+                          partyName.toLowerCase().includes('auto-calculated');
+    
+    let party = null;
+    if (!isVirtualParty) {
+      // Only validate real parties
+      party = parties.find(p => p.party_name === partyName);
+      
+      if (!party) {
+        return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
+      }
+    } else {
+      // For virtual parties, create a virtual party object
+      party = {
+        party_name: partyName,
+        status: 'A', // Active
+        monday_final: 'No'
+      };
+      }
     
     // Get all ledger entries for this party
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
@@ -348,11 +370,29 @@ const addEntry = async (req, res) => {
     // Check if party exists
     const parties = await Party.findByUserId(userId);
     
-    const party = parties.find(p => p.party_name === partyName);
+    // Allow virtual parties dynamically without database validation
+    const isVirtualParty = partyName.toLowerCase().includes('commission') ||
+                          partyName.toLowerCase().includes('aqc') ||
+                          partyName.toLowerCase().includes('company') ||
+                          partyName.toLowerCase().includes('comp') ||
+                          partyName.toLowerCase().includes('auto-calculated');
     
-    if (!party) {
-      return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
-    }
+    let party = null;
+    if (!isVirtualParty) {
+      // Only validate real parties
+      party = parties.find(p => p.party_name === partyName);
+      
+      if (!party) {
+        return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
+      }
+    } else {
+      // For virtual parties, create a virtual party object
+      party = {
+        party_name: partyName,
+        status: 'A', // Active
+        monday_final: 'No'
+      };
+      }
 
     // Validate transaction amounts
     const debitAmount = parseFloat(debit || 0);
@@ -391,8 +431,24 @@ const addEntry = async (req, res) => {
 
     const entry = await LedgerEntry.create(entryData);
     
+    // Debug logging for virtual parties
+    if (isVirtualParty) {
+      .toISOString(),
+        isVirtualParty: true,
+        userId
+      });
+    } else {
+      .toISOString(),
+        isVirtualParty: false,
+        userId
+      });
+    }
+    
     // Update all subsequent entries' balances for this party
     await updateSubsequentBalances(userId, partyName, entry.id);
+    
+    // Invalidate Final Trial Balance cache to ensure real-time data
+    invalidateCache(userId, partyName);
     
     sendSuccessResponse(res, {
       ...entry,
@@ -714,6 +770,9 @@ const deleteEntry = async (req, res) => {
     
     // Recalculate balances for all remaining entries of this party
     await recalculateAllBalancesForParty(userId, partyName);
+    
+    // Invalidate Final Trial Balance cache to ensure real-time data
+    invalidateCache(userId, partyName);
 
     sendSuccessResponse(res, { deleted: true }, 'Entry deleted successfully with balance recalculation');
   } catch (error) {

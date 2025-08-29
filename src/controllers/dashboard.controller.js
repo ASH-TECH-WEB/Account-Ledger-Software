@@ -46,67 +46,41 @@ const getDashboardStats = async (req, res) => {
     let totalBusinessVolume = 0;
     let commissionTransactionCount = 0;
 
-    // Filter commission transactions
-    const commissionEntries = entries.filter(entry => 
-      entry.remarks && entry.remarks.includes('Commission Transaction')
-    );
-
-    // Group entries by transaction ID
-    const transactionGroups = {};
-    commissionEntries.forEach(entry => {
-      const match = entry.remarks.match(/Commission Transaction (CT\d+)/);
-      if (match) {
-        const transactionId = match[1];
-        if (!transactionGroups[transactionId]) {
-          transactionGroups[transactionId] = [];
-        }
-        transactionGroups[transactionId].push(entry);
-      }
-    });
-
-    // Calculate balance for each transaction
-    Object.values(transactionGroups).forEach(transactionEntries => {
-      let transactionBalance = 0;
-      let transactionVolume = 0;
-      let clientCommission = 0;
-      let vendorCommission = 0;
-
-      transactionEntries.forEach(entry => {
-        if (entry.party_name === 'AQC Company') {
-          if (entry.tns_type === 'CR') {
-            transactionBalance += entry.credit;
-          } else if (entry.tns_type === 'DR') {
-            transactionBalance -= entry.debit;
-          }
-        }
-
-        // Extract commission amounts from remarks
-        if (entry.remarks.includes('Commission:')) {
-          const commissionMatch = entry.remarks.match(/Commission: ₹(\d+)/);
-          if (commissionMatch) {
-            const amount = parseInt(commissionMatch[1]);
-            if (entry.remarks.includes('Received from') && entry.party_name === 'AQC Company') {
-              clientCommission = amount;
-            } else if (entry.remarks.includes('Incentive payment to') && entry.party_name === 'AQC Company') {
-              vendorCommission = amount;
+    // ULTIMATE CORRECTED LOGIC: Commission calculation based on actual transaction direction
+    entries.forEach(entry => {
+      const amount = entry.tns_type === 'CR' ? entry.credit : entry.debit;
+      
+      // Calculate commission based on actual transaction direction
+      if (entry.remarks.includes('Commission')) {
+        if (entry.remarks.includes('Auto-calculated')) {
+          // Extract party number from remarks dynamically
+          const partyMatch = entry.remarks.match(/\((\d+)\)/);
+          if (partyMatch) {
+            const partyNumber = parseInt(partyMatch[1]);
+            
+            // Smart logic: Based on transaction type (CR/DR) for universal compatibility
+            if (entry.tns_type === 'CR') {
+              // Credit transaction = Company pays commission
+              totalCommissionPaid += amount;
+              aqcCompanyBalance -= amount;
+            } else if (entry.tns_type === 'DR') {
+              // Debit transaction = Company receives commission
+              totalCommissionCollected += amount;
+              aqcCompanyBalance += amount;
             }
           }
         }
-
-        // Extract original amount
-        if (entry.remarks.includes('Amount: ₹')) {
-          const amountMatch = entry.remarks.match(/Amount: ₹(\d+)/);
-          if (amountMatch && !transactionVolume) {
-            transactionVolume = parseInt(amountMatch[1]);
-          }
-        }
-      });
-
-      aqcCompanyBalance += transactionBalance;
-      totalBusinessVolume += transactionVolume;
-      totalCommissionCollected += clientCommission;
-      totalCommissionPaid += vendorCommission;
-      commissionTransactionCount++;
+      }
+      
+      // Calculate business volume from main transactions (non-commission)
+      if (!entry.remarks.includes('Commission') && !entry.remarks.includes('Auto-calculated')) {
+        totalBusinessVolume += amount;
+      }
+      
+      // Count commission transactions
+      if (entry.remarks.includes('Commission')) {
+        commissionTransactionCount++;
+      }
     });
 
     // Calculate net profit

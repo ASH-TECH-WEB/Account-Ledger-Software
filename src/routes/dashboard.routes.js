@@ -19,6 +19,18 @@ const dashboardController = require('../controllers/dashboard.controller');
 const { authenticateToken } = require('../middlewares/auth');
 
 /**
+ * GET /api/dashboard
+ * 
+ * General dashboard endpoint that provides overall dashboard data
+ * 
+ * @requires Authentication
+ * @returns {Object} Complete dashboard data
+ */
+router.get('/', authenticateToken, (req, res) => {
+  dashboardController.getDashboardStats(req, res);
+});
+
+/**
  * GET /api/dashboard/stats
  * 
  * Retrieves dashboard statistics including:

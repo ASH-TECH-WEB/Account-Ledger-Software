@@ -17,10 +17,18 @@ const { supabase } = require('../config/supabase');
 // Enhanced cache configuration with TTL management
 const trialBalanceCache = new Map();
 const CACHE_CONFIG = {
-  TTL: 5 * 60 * 1000, // 5 minutes cache
+  TTL: 30 * 1000, // 30 seconds cache for real-time updates
   MAX_CACHE_SIZE: 1000, // Maximum number of cached entries
-  CLEANUP_INTERVAL: 10 * 60 * 1000, // 10 minutes cleanup interval
+  CLEANUP_INTERVAL: 5 * 60 * 1000, // 5 minutes cleanup interval
   PERFORMANCE_THRESHOLD: 1000 // ms threshold for performance logging
+};
+
+// Real-time cache invalidation triggers
+const CACHE_INVALIDATION_TRIGGERS = {
+  LEDGER_ENTRY_CHANGED: 'ledger_entry_changed',
+  PARTY_CHANGED: 'party_changed',
+  TRANSACTION_DELETED: 'transaction_deleted',
+  TRANSACTION_ADDED: 'transaction_added'
 };
 
 // Business constants
@@ -116,6 +124,48 @@ const cleanupCache = () => {
   }
 };
 
+// Cache invalidation function for external use
+const invalidateCache = (userId, companyName = null, partyName = null) => {
+  try {
+    const keysToDelete = [];
+    
+    // Clear all cache entries for this user
+    for (const [key, value] of trialBalanceCache.entries()) {
+      if (key.startsWith(`${userId}_`)) {
+        if (companyName && partyName) {
+          // Clear specific company and party cache
+          if (key.includes(companyName) && key.includes(partyName)) {
+            keysToDelete.push(key);
+          }
+        } else if (companyName) {
+          // Clear specific company cache
+          if (key.includes(companyName)) {
+            keysToDelete.push(key);
+          }
+        } else {
+          // Clear all user cache
+          keysToDelete.push(key);
+        }
+      }
+    }
+    
+    keysToDelete.forEach(key => trialBalanceCache.delete(key));
+    
+    return true;
+  } catch (error) {
+    return false;
+  }
+};
+
+// Real-time cache invalidation for ledger changes
+const invalidateCacheForLedgerChange = (userId, changeType, companyName = null, partyName = null) => {
+  // Always invalidate cache for any ledger change
+  invalidateCache(userId, companyName, partyName);
+  
+  // Log the change for monitoring
+  return true;
+};
+
 // Set up periodic cache cleanup
 setInterval(cleanupCache, CACHE_CONFIG.CLEANUP_INTERVAL);
 
@@ -163,12 +213,30 @@ const getFinalTrialBalance = async (req, res) => {
     const { partyName, page, limit } = req.query;
     const startTime = Date.now();
 
+    // User information validated
+
+    // Get user's company name from settings for proper filtering
+    let userCompanyName = null; // Will be set from user settings
+    try {
+      const { data: userSettings } = await supabase
+        .from('user_settings')
+        .select('company_account')
+        .eq('user_id', userId)
+        .single();
+      
+      if (userSettings && userSettings.company_account) {
+        userCompanyName = userSettings.company_account;
+      }
+    } catch (error) {
+      // Use default company name if settings not found
+    }
+
     // Validate inputs
     const validatedPartyName = validatePartyName(partyName);
     const { page: validatedPage, limit: validatedLimit } = validatePagination(page, limit);
 
-    // Check cache first for better performance
-    const cacheKey = `${userId}_${validatedPartyName || 'all'}_${validatedPage}_${validatedLimit}`;
+    // Check cache first for better performance (include company name for multi-tenant support)
+    const cacheKey = `${userId}_${userCompanyName}_${validatedPartyName || 'all'}_${validatedPage}_${validatedLimit}`;
     const cachedData = trialBalanceCache.get(cacheKey);
     
     if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_CONFIG.TTL) {
@@ -180,10 +248,13 @@ const getFinalTrialBalance = async (req, res) => {
     // Starting optimized trial balance calculation
     const calculationStartTime = Date.now();
 
-    // Use database aggregation for much faster performance
+    // Clear cache for this user and company to ensure fresh data
+    invalidateCache(userId, userCompanyName);
+
+    // Use database aggregation to get all transactions for trial balance
     let query = supabase
       .from('ledger_entries')
-      .select('party_name, tns_type, credit, debit')
+      .select('*')  // Select all fields to ensure we don't miss anything
       .eq('user_id', userId);
 
     // Filter by party name if provided
@@ -191,45 +262,98 @@ const getFinalTrialBalance = async (req, res) => {
       query = query.ilike('party_name', `%${validatedPartyName}%`);
     }
 
+    // Database query prepared
+
     const { data: entries, error } = await query;
 
     if (error) {
       throw error;
     }
 
-    // Process entries with optimized logic
-    const partyBalances = new Map();
+    // Entries fetched successfully
+    
+    // Debug: Log what entries we're getting
+    .map(e => ({
+      party_name: e.party_name,
+      credit: e.credit,
+      debit: e.debit,
+      remarks: e.remarks
+    })));
+
+    // Process entries to get individual transactions for trial balance
+    const partyTransactions = new Map(); // Use Map to group by party name
 
     entries.forEach(entry => {
       const partyName = entry.party_name;
+      const credit = Number(entry.credit) || 0;
+      const debit = Number(entry.debit) || 0;
+      const remarks = entry.remarks || '';
       
-      if (!partyBalances.has(partyName)) {
-        partyBalances.set(partyName, {
-          name: partyName,
+      // Processing transaction
+      
+      // Check if this is a commission transaction
+      const isCommission = remarks.toLowerCase().includes('commission') || 
+                          remarks.toLowerCase().includes('auto-calculated');
+      
+      // Check if this is a comp transaction
+      const isComp = remarks.toLowerCase().includes('comp');
+      
+      // Check if this is a company transaction (virtual party)
+      const isCompanyTransaction = remarks === userCompanyName;
+      
+      // Determine the display name
+      let displayName = partyName;
+      if (isCompanyTransaction) {
+        displayName = userCompanyName; // Group under company name
+      } else if (isCommission) {
+        displayName = 'Commission';
+      } else if (isComp) {
+        displayName = 'Comp';
+      }
+      
+      // Get or create party transaction entry
+      if (!partyTransactions.has(displayName)) {
+        partyTransactions.set(displayName, {
+          name: displayName,
           creditTotal: 0,
           debitTotal: 0,
-          entryCount: 0
+          balance: 0,
+          entryCount: 0,
+          remarks: '',
+          date: entry.date,
+          originalParty: partyName
         });
       }
-
-      const party = partyBalances.get(partyName);
-      party.entryCount++;
       
-      // Optimize the type checking
-      if (entry.tns_type === 'CR' && entry.credit > 0) {
-        party.creditTotal += Number(entry.credit) || 0;
-      } else if (entry.tns_type === 'DR' && entry.debit > 0) {
-        party.debitTotal += Number(entry.debit) || 0;
+      const partyEntry = partyTransactions.get(displayName);
+      partyEntry.entryCount++;
+      
+      // Add credit amount
+      if (credit > 0) {
+        partyEntry.creditTotal += credit;
       }
+      
+      // Add debit amount
+      if (debit > 0) {
+        partyEntry.debitTotal += debit;
+      }
+      
+      // Update balance
+      partyEntry.balance = partyEntry.creditTotal - partyEntry.debitTotal;
     });
-
-    // Convert Map to array and calculate balances
-    const trialBalance = Array.from(partyBalances.values())
-      .map(party => ({
-        ...party,
-        balance: party.creditTotal - party.debitTotal
-      }))
+    
+    // Convert Map to array for trial balance
+    const trialBalance = Array.from(partyTransactions.values())
       .filter(party => party.creditTotal > 0 || party.debitTotal > 0); // Only show parties with transactions
+    
+    // Debug: Log what parties we're creating
+    ));
+
+    // Transactions processed successfully
+    
+    // Commission and Comp transactions processed
+    
+    // Party transactions processed
 
     // Calculate totals efficiently
     const totalCredit = trialBalance.reduce((sum, party) => sum + party.creditTotal, 0);
@@ -451,6 +575,129 @@ const clearCache = async (req, res) => {
 };
 
 /**
+ * Force refresh trial balance data (bypass cache)
+ */
+const forceRefreshTrialBalance = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    // Clear cache for this user
+    invalidateCache(userId);
+    
+    // Get fresh data without cache
+    const startTime = Date.now();
+    
+    // Use database aggregation to get all transactions for trial balance
+    let query = supabase
+      .from('ledger_entries')
+      .select('*')
+      .eq('user_id', userId);
+
+    const { data: entries, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    // Process entries to get individual transactions for trial balance
+    const partyTransactions = new Map();
+
+    entries.forEach(entry => {
+      const partyName = entry.party_name;
+      const credit = Number(entry.credit) || 0;
+      const debit = Number(entry.debit) || 0;
+      const remarks = entry.remarks || '';
+      
+      // Check if this is a commission transaction
+      const isCommission = remarks.toLowerCase().includes('commission') || 
+                          remarks.toLowerCase().includes('auto-calculated');
+      
+      // Check if this is a comp transaction
+      const isComp = remarks.toLowerCase().includes('comp');
+      
+      // Check if this is a company transaction (virtual party)
+      const isCompanyTransaction = remarks === userCompanyName;
+      
+      // Determine the display name
+      let displayName = partyName;
+      if (isCompanyTransaction) {
+        displayName = userCompanyName; // Group under company name
+      } else if (isCommission) {
+        displayName = 'Commission';
+      } else if (isComp) {
+        displayName = 'Comp';
+      }
+      
+      // Get or create party transaction entry
+      if (!partyTransactions.has(displayName)) {
+        partyTransactions.set(displayName, {
+          name: displayName,
+          creditTotal: 0,
+          debitTotal: 0,
+          balance: 0,
+          entryCount: 0,
+          remarks: '',
+          date: entry.date,
+          originalParty: partyName
+        });
+      }
+      
+      const partyEntry = partyTransactions.get(displayName);
+      partyEntry.entryCount++;
+      
+      // Add credit amount
+      if (credit > 0) {
+        partyEntry.creditTotal += credit;
+      }
+      
+      // Add debit amount
+      if (debit > 0) {
+        partyEntry.debitTotal += debit;
+      }
+      
+      // Update balance
+      partyEntry.balance = partyEntry.creditTotal - partyEntry.debitTotal;
+    });
+    
+    // Convert Map to array for trial balance
+    const trialBalance = Array.from(partyTransactions.values())
+      .filter(party => party.creditTotal > 0 || party.debitTotal > 0);
+
+    // Calculate totals efficiently
+    const totalCredit = trialBalance.reduce((sum, party) => sum + party.creditTotal, 0);
+    const totalDebit = trialBalance.reduce((sum, party) => sum + party.debitTotal, 0);
+    const totalBalance = totalCredit - totalDebit;
+
+    const responseData = {
+      parties: trialBalance,
+      totals: {
+        totalCredit,
+        totalDebit,
+        totalBalance
+      },
+      pagination: {
+        currentPage: 1,
+        totalPages: 1,
+        totalItems: trialBalance.length,
+        itemsPerPage: trialBalance.length
+      },
+      metadata: {
+        calculationTime: `${Date.now() - startTime}ms`,
+        cacheStatus: 'force_refresh',
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    - startTime}ms`);
+    
+    sendSuccessResponse(res, responseData, 'Trial balance force refreshed successfully');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to force refresh trial balance', error);
+  }
+};
+
+/**
  * Get performance metrics for trial balance operations
  */
 const getPerformanceMetrics = async (req, res) => {
@@ -504,5 +751,8 @@ module.exports = {
   getPartyBalance,
   generateReport,
   clearCache,
-  getPerformanceMetrics
+  getPerformanceMetrics,
+  invalidateCache,
+  invalidateCacheForLedgerChange,
+  forceRefreshTrialBalance
 }; 

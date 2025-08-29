@@ -35,6 +35,33 @@ router.post('/register/user', register);
 router.post('/google-login', googleLogin);
 router.post('/login', login);
 
+// Add GET route for authentication status check
+router.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Authentication service is running',
+    endpoints: {
+      login: 'POST /login',
+      register: 'POST /register/user',
+      googleLogin: 'POST /google-login',
+      profile: 'GET /profile (protected)',
+      updateProfile: 'PUT /profile (protected)',
+      changePassword: 'PUT /change-password (protected)',
+      logout: 'POST /logout (protected)'
+    }
+  });
+});
+
+// Add GET route for checking if user is authenticated
+router.get('/status', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Authentication status endpoint',
+    authenticated: false,
+    note: 'Use POST /login to authenticate'
+  });
+});
+
 // Protected routes
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateProfile);
