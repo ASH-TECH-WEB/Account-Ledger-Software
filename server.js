@@ -52,7 +52,6 @@ require('dotenv').config();
 
 // Database and route imports
 const { testConnection: testSupabaseConnection } = require('./src/config/supabase');
-const { testConnection: testPostgresConnection } = require('./src/config/postgres');
 const authRoutes = require('./src/routes/auth.routes');
 const newPartyRoutes = require('./src/routes/newParty.routes');
 const partyLedgerRoutes = require('./src/routes/partyLedger.routes');
@@ -150,21 +149,22 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = [
-      'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
-      'https://property-flow-design.vercel.app', // Vercel frontend
-      'http://localhost:3000',
-      'http://localhost:5173',
-      'http://localhost:8080',
-      'http://localhost:5000',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:5173',
-      'http://127.0.0.1:8080',
-      'http://127.0.0.1:5000',
-      'http://localhost:4173', // Vite preview port
-      'http://127.0.0.1:4173',
-      'http://localhost:5004'  // Vite preview port
-    ];
+      const allowedOrigins = [
+    'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
+    'https://property-flow-design.vercel.app', // Vercel frontend
+    'https://account-ledger-software.vercel.app', // Vercel backend domain
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:8080',
+    'http://localhost:5000',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:8080',
+    'http://127.0.0.1:5000',
+    'http://localhost:4173', // Vite preview port
+    'http://127.0.0.1:4173',
+    'http://localhost:5004'  // Vite preview port
+  ];
     
     if (allowedOrigins.indexOf(origin) !== -1) {
       callback(null, true);
@@ -228,6 +228,7 @@ app.use((req, res, next) => {
   const allowedOrigins = [
     'https://escrow-account-ledger.web.app', // Firebase hosting (Primary)
     'https://property-flow-design.vercel.app', // Vercel frontend
+    'https://account-ledger-software.vercel.app', // Vercel backend domain
     'http://localhost:3000',
     'http://localhost:5173',
     'http://localhost:8080',
@@ -330,23 +331,34 @@ app.use(compression({
  * - If rate limiting not working: Check proxy configuration
  */
 
-// General API rate limiting (more lenient)
-const generalLimiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 300, // Increased for better UX
-  message: {
-    success: false,
-    message: 'Too many requests from this IP, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skip: (req) => req.path === '/health'
-});
+/**
+ * 🚦 Rate Limiting Configuration
+ * 
+ * Optimized for multiple users and better scalability.
+ * Rate limits can be configured via environment variables.
+ * 
+ * Current Settings (Multiple User Friendly):
+ * - Authentication: 50 attempts per 15 minutes
+ * - Database: 100 operations per minute  
+ * - General API: 300 requests per minute
+ * - Throttling: 200 requests per minute
+ * 
+ * Environment Variables:
+ * - AUTH_RATE_LIMIT_MAX, AUTH_RATE_LIMIT_WINDOW_MS
+ * - DB_RATE_LIMIT_MAX, DB_RATE_LIMIT_WINDOW_MS
+ * - GENERAL_RATE_LIMIT_MAX, GENERAL_RATE_LIMIT_WINDOW_MS
+ * - THROTTLE_MAX_REQUESTS
+ * 
+ * 🔧 TROUBLESHOOTING:
+ * - If rate limits too strict: Increase environment variables
+ * - If server overloaded: Decrease environment variables
+ * - Monitor rate limit hits in server logs
+ */
 
 // Stricter rate limiting for authentication endpoints
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // Only 10 login attempts per 15 minutes
+  windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+  max: parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 50, // 50 login attempts per 15 minutes
   message: {
     success: false,
     message: 'Too many authentication attempts. Please try again in 15 minutes.'
@@ -358,11 +370,24 @@ const authLimiter = rateLimit({
 
 // Rate limiting for database-heavy operations
 const dbOperationLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 database operations per minute
+  windowMs: parseInt(process.env.DB_RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute
+  max: parseInt(process.env.DB_RATE_LIMIT_MAX) || 100, // 100 database operations per minute
   message: {
     success: false,
     message: 'Too many database operations. Please slow down your requests.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === '/health'
+});
+
+// General rate limiting for all API endpoints
+const generalLimiter = rateLimit({
+  windowMs: parseInt(process.env.GENERAL_RATE_LIMIT_WINDOW_MS) || 60 * 1000, // 1 minute
+  max: parseInt(process.env.GENERAL_RATE_LIMIT_MAX) || 300, // 300 requests per minute
+  message: {
+    success: false,
+    message: 'Too many requests. Please slow down your requests.'
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -400,7 +425,7 @@ const throttlingMiddleware = (req, res, next) => {
   }
   
   // Check if client has exceeded limit
-  const maxRequestsPerMinute = 60;
+  const maxRequestsPerMinute = parseInt(process.env.THROTTLE_MAX_REQUESTS) || 200; // 200 requests per minute
   if (clientData.count >= maxRequestsPerMinute) {
     const retryAfter = Math.ceil((clientData.resetTime - now) / 1000);
     res.set('Retry-After', retryAfter);
@@ -422,7 +447,6 @@ app.use('/api/authentication', authLimiter);
 app.use('/api/party-ledger', dbOperationLimiter);
 app.use('/api/new-party', dbOperationLimiter);
 app.use('/api/parties', dbOperationLimiter); // Add explicit rate limiting for parties
-app.use('/api/', generalLimiter);
 
 // Apply throttling to all API routes
 app.use('/api/', throttlingMiddleware);
@@ -438,18 +462,22 @@ app.use('/api/', throttlingMiddleware);
  * 
  * 🔧 TROUBLESHOOTING:
  * - If request body empty: Check content-type header
- * - If payload too large: Increase limit
  * - If parsing fails: Check request format
+ * - If size limit exceeded: Check request body size
  */
 app.use(express.json({ 
-  limit: '2mb', // Reduced limit for faster processing
+  limit: '2mb',
   strict: true,
-  type: 'application/json'
+  verify: (req, res, buf) => {
+    // Store raw body for signature verification if needed
+    req.rawBody = buf;
+  }
 }));
+
 app.use(express.urlencoded({ 
   extended: true, 
-  limit: '2mb', // Reduced limit
-  parameterLimit: 500 // Reduced parameter limit
+  limit: '2mb',
+  parameterLimit: 1000
 }));
 
 /**
@@ -465,7 +493,8 @@ app.use(express.urlencoded({
  * - If performance issues: Disable in production
  */
 if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('combined'));
+  // Custom minimal logging format - only essential info
+  app.use(morgan(':method :url :status :response-time ms'));
 }
 
 /**
@@ -487,6 +516,18 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV
+  });
+});
+
+// Also provide health endpoint at /api/health for API consistency
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'API Server is running',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+    version: '1.0.0'
   });
 });
 
@@ -515,6 +556,14 @@ app.use('/api/final-trial-balance', finalTrialBalanceRoutes);
 app.use('/api/settings', userSettingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/commission-transactions', commissionTransactionRoutes);
+
+// Add missing API routes for better consistency
+app.use('/api/auth', authRoutes); // Alternative auth route
+app.use('/api/user-settings', userSettingsRoutes); // Alternative user settings route
+app.use('/api/ledger-entries', partyLedgerRoutes); // Alternative ledger entries route
+
+// Apply general rate limiting AFTER routes are mounted
+app.use('/api/', generalLimiter);
 
 /**
  * ❌ 404 Error Handler
@@ -607,10 +656,9 @@ app.listen(PORT, async () => {
   console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`🔗 API: http://localhost:${PORT}/api`);
   
-  // Test database connections
+  // Test Supabase connection (main database)
   const supabaseConnected = await testSupabaseConnection();
-  const postgresConnected = await testPostgresConnection();
-  console.log(`🗄️ Database: ${supabaseConnected && postgresConnected ? 'Connected' : 'Failed'}`);
+  console.log(`🗄️ Database: ${supabaseConnected ? 'Connected' : 'Failed'}`);
 });
 
 module.exports = app; 
