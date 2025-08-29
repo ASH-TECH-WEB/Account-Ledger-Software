@@ -2,6 +2,7 @@
  * Account Ledger Software - Backend Server
  * 
  * 🔄 Force redeploy - Latest route fixes for /api/parties endpoint
+ * 🚀 Latest deployment update - Vercel dashboard sync
  * 
  * 🔧 TROUBLESHOOTING GUIDE:
  * =========================
