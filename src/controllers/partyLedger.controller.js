@@ -433,9 +433,13 @@ const addEntry = async (req, res) => {
     
     // Debug logging for virtual parties
     if (isVirtualParty) {
-      console.log(`🔍 Virtual party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: true, userId: ${userId}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔍 Virtual party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: true, userId: ${userId}`);
+      }
     } else {
-      console.log(`🔍 Regular party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: false, userId: ${userId}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔍 Regular party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: false, userId: ${userId}`);
+      }
     }
     
     // Update all subsequent entries' balances for this party
@@ -508,7 +512,9 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
     }
     
   } catch (error) {
-    }
+    console.error('Error updating subsequent balances:', error);
+    throw error; // Re-throw to let calling function handle it
+  }
 };
 
 /**
@@ -604,7 +610,9 @@ const recalculateAllBalancesForParty = async (userId, partyName) => {
     }
     
   } catch (error) {
-    }
+    console.error('Error recalculating all balances for party:', error);
+    throw error; // Re-throw to let calling function handle it
+  }
 };
 
 /**

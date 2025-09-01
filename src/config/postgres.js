@@ -1,6 +1,13 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Validate required environment variables
+if (!process.env.POSTGRES_URL) {
+  console.error('❌ CRITICAL ERROR: Missing required environment variable POSTGRES_URL');
+  console.error('Please set the POSTGRES_URL environment variable with your database connection string');
+  process.exit(1);
+}
+
 // PostgreSQL connection configuration
 const pool = new Pool({
   connectionString: process.env.POSTGRES_URL,

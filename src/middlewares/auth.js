@@ -30,6 +30,14 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Verify JWT_SECRET exists
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({
+        success: false,
+        message: 'Server configuration error: JWT_SECRET not configured'
+      });
+    }
+    
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
@@ -84,6 +92,11 @@ const optionalAuth = async (req, res, next) => {
 
     if (!token) {
       return next(); // Continue without user
+    }
+
+    // Verify JWT_SECRET exists
+    if (!process.env.JWT_SECRET) {
+      return next(); // Continue without user if JWT_SECRET is not configured
     }
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);

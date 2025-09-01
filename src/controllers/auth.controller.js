@@ -296,7 +296,9 @@ const register = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful registration
-    console.log(`✅ User registered successfully: ${email} at ${new Date().toISOString()}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ User registered successfully: ${email} at ${new Date().toISOString()}`);
+    }
 
     sendSuccessResponse(res, {
       user: {
@@ -362,7 +364,9 @@ const googleLogin = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful Google authentication
-    console.log(`✅ Google authentication successful: ${email} at ${new Date().toISOString()}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ Google authentication successful: ${email} at ${new Date().toISOString()}`);
+    }
 
     sendSuccessResponse(res, {
       user: {
@@ -441,7 +445,9 @@ const login = async (req, res) => {
     const token = generateToken(user.id);
 
     // Log successful login
-    console.log(`✅ User login successful: ${email} at ${new Date().toISOString()}, IP: ${req.ip}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ User login successful: ${email} at ${new Date().toISOString()}, IP: ${req.ip}`);
+    }
 
     sendSuccessResponse(res, {
       user: {
