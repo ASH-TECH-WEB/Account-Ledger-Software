@@ -13,6 +13,7 @@
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
 const { supabase } = require('../config/supabase');
+const { getCache, setCache, deleteCachePattern } = require('../config/redis');
 
 // Enhanced cache configuration with TTL management
 const trialBalanceCache = new Map();
@@ -125,42 +126,39 @@ const cleanupCache = () => {
 };
 
 // Cache invalidation function for external use
-const invalidateCache = (userId, companyName = null, partyName = null) => {
+const invalidateCache = async (userId, companyName = null, partyName = null) => {
   try {
-    const keysToDelete = [];
+    let deletedCount = 0;
     
-    // Clear all cache entries for this user
-    for (const [key, value] of trialBalanceCache.entries()) {
-      if (key.startsWith(`${userId}_`)) {
-        if (companyName && partyName) {
-          // Clear specific company and party cache
-          if (key.includes(companyName) && key.includes(partyName)) {
-            keysToDelete.push(key);
-          }
-        } else if (companyName) {
-          // Clear specific company cache
-          if (key.includes(companyName)) {
-            keysToDelete.push(key);
-          }
-        } else {
-          // Clear all user cache
-          keysToDelete.push(key);
-        }
-      }
+    if (companyName && partyName) {
+      // Clear specific company and party cache
+      const pattern = `trial_balance:${userId}:${companyName}:${partyName}:*`;
+      deletedCount = await deleteCachePattern(pattern);
+    } else if (companyName) {
+      // Clear all cache entries for this company
+      const pattern = `trial_balance:${userId}:${companyName}:*`;
+      deletedCount = await deleteCachePattern(pattern);
+    } else {
+      // Clear all cache entries for this user
+      const pattern = `trial_balance:${userId}:*`;
+      deletedCount = await deleteCachePattern(pattern);
     }
     
-    keysToDelete.forEach(key => trialBalanceCache.delete(key));
+    if (deletedCount > 0) {
+      console.log(`🗑️ Redis cache invalidated: ${deletedCount} entries for user ${userId}`);
+    }
     
     return true;
   } catch (error) {
+    console.error('Error invalidating Redis cache:', error);
     return false;
   }
 };
 
 // Real-time cache invalidation for ledger changes
-const invalidateCacheForLedgerChange = (userId, changeType, companyName = null, partyName = null) => {
+const invalidateCacheForLedgerChange = async (userId, changeType, companyName = null, partyName = null) => {
   // Always invalidate cache for any ledger change
-  invalidateCache(userId, companyName, partyName);
+  await invalidateCache(userId, companyName, partyName);
   
   // Log the change for monitoring
   return true;
@@ -235,21 +233,21 @@ const getFinalTrialBalance = async (req, res) => {
     const validatedPartyName = validatePartyName(partyName);
     const { page: validatedPage, limit: validatedLimit } = validatePagination(page, limit);
 
-    // Check cache first for better performance (include company name for multi-tenant support)
-    const cacheKey = `${userId}_${userCompanyName}_${validatedPartyName || 'all'}_${validatedPage}_${validatedLimit}`;
-    const cachedData = trialBalanceCache.get(cacheKey);
+    // Check Redis cache first for better performance (include company name for multi-tenant support)
+    const cacheKey = `trial_balance:${userId}:${userCompanyName}:${validatedPartyName || 'all'}:${validatedPage}:${validatedLimit}`;
+    const cachedData = await getCache(cacheKey);
     
-    if (cachedData && (Date.now() - cachedData.timestamp) < CACHE_CONFIG.TTL) {
+    if (cachedData) {
       const cacheTime = Date.now() - startTime;
-      logPerformance('Cache hit', cacheTime, { userId, partyName: validatedPartyName });
-      return sendSuccessResponse(res, cachedData.data, 'Trial balance served from cache');
+      logPerformance('Redis cache hit', cacheTime, { userId, partyName: validatedPartyName });
+      return sendSuccessResponse(res, cachedData, 'Trial balance served from Redis cache');
     }
 
     // Starting optimized trial balance calculation
     const calculationStartTime = Date.now();
 
-    // Clear cache for this user and company to ensure fresh data
-    invalidateCache(userId, userCompanyName);
+    // Clear Redis cache for this user and company to ensure fresh data
+    await invalidateCache(userId, userCompanyName);
 
     // Use database aggregation to get all transactions for trial balance
     let query = supabase
@@ -388,11 +386,8 @@ const getFinalTrialBalance = async (req, res) => {
       }
     };
 
-    // Cache the response
-    trialBalanceCache.set(cacheKey, {
-      timestamp: Date.now(),
-      data: responseData
-    });
+    // Cache the response in Redis
+    await setCache(cacheKey, responseData, 30); // 30 seconds TTL
 
     const totalTime = Date.now() - startTime;
     logPerformance('Total trial balance operation', totalTime, {

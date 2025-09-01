@@ -446,7 +446,7 @@ const addEntry = async (req, res) => {
     await updateSubsequentBalances(userId, partyName, entry.id);
     
     // Invalidate Final Trial Balance cache to ensure real-time data
-    invalidateCache(userId, partyName);
+    await invalidateCache(userId, null, partyName);
     
     sendSuccessResponse(res, {
       ...entry,
@@ -774,7 +774,7 @@ const deleteEntry = async (req, res) => {
     await recalculateAllBalancesForParty(userId, partyName);
     
     // Invalidate Final Trial Balance cache to ensure real-time data
-    invalidateCache(userId, partyName);
+    await invalidateCache(userId, null, partyName);
 
     sendSuccessResponse(res, { deleted: true }, 'Entry deleted successfully with balance recalculation');
   } catch (error) {

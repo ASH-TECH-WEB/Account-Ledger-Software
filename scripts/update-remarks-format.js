@@ -20,8 +20,6 @@ const supabase = createClient(supabaseUrl, supabaseKey);
  */
 const updateRemarksFormat = async () => {
   try {
-    console.log('🔄 Starting remarks format update...');
-    
     // Get all ledger entries
     const { data: entries, error: fetchError } = await supabase
       .from('ledger_entries')
@@ -33,11 +31,8 @@ const updateRemarksFormat = async () => {
     }
 
     if (!entries || entries.length === 0) {
-      console.log('ℹ️ No ledger entries found to update');
       return;
     }
-
-    console.log(`📊 Found ${entries.length} ledger entries to process`);
 
     let updatedCount = 0;
     let skippedCount = 0;
@@ -48,7 +43,6 @@ const updateRemarksFormat = async () => {
         
         // Skip if already in correct format (contains parentheses)
         if (remarks && remarks.includes('(') && remarks.includes(')')) {
-          console.log(`⏭️ Skipping entry ${id} - already in correct format: ${remarks}`);
           skippedCount++;
           continue;
         }
@@ -84,7 +78,6 @@ const updateRemarksFormat = async () => {
           continue;
         }
 
-        console.log(`✅ Updated entry ${id}: "${remarks}" → "${newRemarks}"`);
         updatedCount++;
 
         // Add small delay to avoid overwhelming the database
@@ -95,17 +88,11 @@ const updateRemarksFormat = async () => {
       }
     }
 
-    console.log('\n📈 Update Summary:');
-    console.log(`✅ Successfully updated: ${updatedCount} entries`);
-    console.log(`⏭️ Skipped (already correct): ${skippedCount} entries`);
-    console.log(`📊 Total processed: ${entries.length} entries`);
-
+    : ${skippedCount} entries`);
     if (updatedCount > 0) {
-      console.log('\n🎉 Remarks format update completed successfully!');
-      console.log('All existing entries now use the Party Name(Remarks) format');
+      format');
     } else {
-      console.log('\nℹ️ No updates were needed - all entries already in correct format');
-    }
+      }
 
   } catch (error) {
     console.error('❌ Update failed:', error.message);
