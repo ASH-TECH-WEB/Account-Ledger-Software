@@ -628,18 +628,26 @@ const deleteAccount = async (req, res) => {
   try {
     const userId = req.user.userId;
     
+    console.log(`🗑️ Attempting to delete account for user ID: ${userId}`);
+    
     // Get user details before deletion for logging
     const user = await User.findById(userId);
     if (!user) {
+      console.log(`❌ User not found: ${userId}`);
       return sendErrorResponse(res, 404, 'User not found');
     }
+
+    console.log(`📋 User found: ${user.email}, proceeding with deletion...`);
 
     // Delete user from database (this will cascade delete related data)
     const deleted = await User.delete(userId);
     
     if (!deleted) {
+      console.log(`❌ Delete operation returned false for user: ${userId}`);
       return sendErrorResponse(res, 500, 'Failed to delete account');
     }
+
+    console.log(`✅ Account deleted successfully: ${user.email}`);
 
     // Log account deletion
     if (process.env.NODE_ENV === 'development') {
@@ -649,6 +657,13 @@ const deleteAccount = async (req, res) => {
     sendSuccessResponse(res, null, 'Account deleted successfully');
 
   } catch (error) {
+    console.error('💥 Delete account error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint
+    });
     sendErrorResponse(res, 500, 'Failed to delete account', error);
   }
 };

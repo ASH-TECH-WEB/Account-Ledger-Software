@@ -74,6 +74,9 @@ CREATE POLICY "Users can update own profile" ON users
 CREATE POLICY "Users can insert own profile" ON users
   FOR INSERT WITH CHECK (true);
 
+CREATE POLICY "Users can delete own profile" ON users
+  FOR DELETE USING (true);
+
 -- Parties policies
 CREATE POLICY "Users can manage their parties" ON parties
   FOR ALL USING (true);
