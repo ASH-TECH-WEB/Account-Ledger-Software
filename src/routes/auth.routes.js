@@ -27,6 +27,7 @@ const {
   getProfile,
   updateProfile,
   changePassword,
+  deleteAccount,
   logout
 } = require('../controllers/auth.controller');
 
@@ -66,6 +67,7 @@ router.get('/status', (req, res) => {
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateProfile);
 router.put('/change-password', authenticateToken, changePassword);
+router.delete('/account', authenticateToken, deleteAccount);
 router.post('/logout', authenticateToken, logout);
 
 module.exports = router; 

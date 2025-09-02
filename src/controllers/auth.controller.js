@@ -623,6 +623,36 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Delete account permanently
+const deleteAccount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    
+    // Get user details before deletion for logging
+    const user = await User.findById(userId);
+    if (!user) {
+      return sendErrorResponse(res, 404, 'User not found');
+    }
+
+    // Delete user from database (this will cascade delete related data)
+    const deleted = await User.delete(userId);
+    
+    if (!deleted) {
+      return sendErrorResponse(res, 500, 'Failed to delete account');
+    }
+
+    // Log account deletion
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🗑️ Account deleted permanently: ${user.email} at ${new Date().toISOString()}`);
+    }
+
+    sendSuccessResponse(res, null, 'Account deleted successfully');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to delete account', error);
+  }
+};
+
 // Logout
 const logout = async (req, res) => {
   try {
@@ -650,5 +680,6 @@ module.exports = {
   getProfile,
   updateProfile,
   changePassword,
+  deleteAccount,
   logout
 }; 
