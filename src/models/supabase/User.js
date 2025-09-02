@@ -79,14 +79,51 @@ class User {
 
   static async delete(id) {
     try {
+      console.log(`🗑️ Attempting to delete user with ID: ${id}`);
+      
+      // First, let's try to delete related data manually to avoid RLS issues
+      console.log('🧹 Cleaning up related data...');
+      
+      // Delete ledger entries
+      const { error: ledgerError } = await supabase
+        .from('ledger_entries')
+        .delete()
+        .eq('user_id', id);
+      
+      if (ledgerError) {
+        console.log('⚠️ Warning: Could not delete ledger entries:', ledgerError.message);
+      } else {
+        console.log('✅ Ledger entries deleted');
+      }
+      
+      // Delete parties
+      const { error: partiesError } = await supabase
+        .from('parties')
+        .delete()
+        .eq('user_id', id);
+      
+      if (partiesError) {
+        console.log('⚠️ Warning: Could not delete parties:', partiesError.message);
+      } else {
+        console.log('✅ Parties deleted');
+      }
+      
+      // Now delete the user
+      console.log('👤 Deleting user...');
       const { error } = await supabase
         .from('users')
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Error deleting user:', error);
+        throw error;
+      }
+      
+      console.log('✅ User deleted successfully');
       return true;
     } catch (error) {
+      console.error('💥 Delete user error:', error);
       throw error;
     }
   }
