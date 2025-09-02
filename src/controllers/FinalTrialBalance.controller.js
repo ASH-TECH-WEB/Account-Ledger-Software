@@ -213,20 +213,36 @@ const getFinalTrialBalance = async (req, res) => {
 
     // User information validated
 
-    // Get user's company name from settings for proper filtering
-    let userCompanyName = null; // Will be set from user settings
+    // Get user's company name from settings with caching
+    let userCompanyName = null;
+    const userSettingsCacheKey = `user_settings:${userId}`;
+    
     try {
-      const { data: userSettings } = await supabase
-        .from('user_settings')
-        .select('company_account')
-        .eq('user_id', userId)
-        .single();
+      // Try to get from cache first
+      let userSettings = await getCache(userSettingsCacheKey);
+      
+      if (!userSettings) {
+        // Fetch from database if not in cache
+        const { data: settingsData } = await supabase
+          .from('user_settings')
+          .select('company_account')
+          .eq('user_id', userId)
+          .single();
+        
+        userSettings = settingsData;
+        
+        // Cache user settings for 10 minutes
+        if (userSettings) {
+          await setCache(userSettingsCacheKey, userSettings, 600);
+        }
+      }
       
       if (userSettings && userSettings.company_account) {
         userCompanyName = userSettings.company_account;
       }
     } catch (error) {
       // Use default company name if settings not found
+      console.warn('Failed to fetch user settings:', error.message);
     }
 
     // Validate inputs
@@ -246,14 +262,17 @@ const getFinalTrialBalance = async (req, res) => {
     // Starting optimized trial balance calculation
     const calculationStartTime = Date.now();
 
-    // Clear Redis cache for this user and company to ensure fresh data
-    await invalidateCache(userId, userCompanyName);
+    // Only clear cache if explicitly requested via query parameter
+    if (req.query.forceRefresh === 'true') {
+      await invalidateCache(userId, userCompanyName);
+    }
 
-    // Use database aggregation to get all transactions for trial balance
+    // Use optimized database query with specific fields only
     let query = supabase
       .from('ledger_entries')
-      .select('*')  // Select all fields to ensure we don't miss anything
-      .eq('user_id', userId);
+      .select('party_name, credit, debit, remarks, created_at')  // Only select required fields
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false }); // Add ordering for consistent results
 
     // Filter by party name if provided
     if (validatedPartyName) {
@@ -261,7 +280,6 @@ const getFinalTrialBalance = async (req, res) => {
     }
 
     // Database query prepared
-
     const { data: entries, error } = await query;
 
     if (error) {
@@ -386,8 +404,8 @@ const getFinalTrialBalance = async (req, res) => {
       }
     };
 
-    // Cache the response in Redis
-    await setCache(cacheKey, responseData, 30); // 30 seconds TTL
+    // Cache the response in Redis with longer TTL for better performance
+    await setCache(cacheKey, responseData, 300); // 5 minutes TTL for better caching
 
     const totalTime = Date.now() - startTime;
     logPerformance('Total trial balance operation', totalTime, {

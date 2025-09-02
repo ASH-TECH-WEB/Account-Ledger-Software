@@ -13,6 +13,7 @@
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 const Party = require('../models/supabase/Party');
 const { invalidateCache } = require('./FinalTrialBalance.controller');
+const { getCache, setCache, deleteCache } = require('../config/redis');
 
 // Constants for business logic
 const BUSINESS_CONSTANTS = {
@@ -95,8 +96,19 @@ const getAllParties = async (req, res) => {
   try {
     const userId = validateUserId(req.user.id);
     
+    // Check cache first
+    const cacheKey = `parties:${userId}`;
+    const cachedParties = await getCache(cacheKey);
+    
+    if (cachedParties) {
+      return sendSuccessResponse(res, cachedParties, 'Parties retrieved from cache');
+    }
+    
     // Get parties with error handling
     const parties = await Party.findByUserId(userId);
+    
+    // Cache the result for 5 minutes
+    await setCache(cacheKey, parties, 300);
     
     if (!parties) {
       return sendSuccessResponse(res, [], 'No parties found for user');

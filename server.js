@@ -91,35 +91,15 @@ app.set('trust proxy', 1);
 /**
  * 📊 Performance Monitoring Middleware
  * 
- * Logs request processing time for performance analysis.
- * Only logs in development or for specific endpoints.
+ * Comprehensive performance monitoring with detailed metrics,
+ * slow query detection, and optimization recommendations.
  * 
  * 🔧 TROUBLESHOOTING:
- * - If requests are slow: Check database queries
- * - If server unresponsive: Check server resources
- * - Monitor login and health endpoint performance
+ * - If requests are slow: Check database queries and cache performance
+ * - If server unresponsive: Check server resources and rate limits
+ * - Monitor all endpoints for performance issues
  */
-const performanceMonitor = (req, res, next) => {
-  const start = Date.now();
-  
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    const isLoginEndpoint = req.path.includes('/login');
-    const isHealthEndpoint = req.path === '/health';
-    
-    // Log performance for login and health endpoints
-    if (isLoginEndpoint || isHealthEndpoint) {
-      // Request completed
-      
-      // Warn for slow requests
-      if (duration > 5000) {
-        console.warn(`🐌 Slow request: ${req.method} ${req.path} took ${duration}ms`);
-      }
-    }
-  });
-  
-  next();
-};
+const { performanceMonitor } = require('./src/middlewares/performance');
 
 /**
  * 🗄️ Database Connection
@@ -530,6 +510,31 @@ app.get('/api/health', (req, res) => {
     environment: process.env.NODE_ENV,
     version: '1.0.0'
   });
+});
+
+// Performance monitoring endpoint
+app.get('/api/performance', (req, res) => {
+  const { getPerformanceStats, getPerformanceHealth } = require('./src/middlewares/performance');
+  
+  try {
+    const stats = getPerformanceStats();
+    const health = getPerformanceHealth();
+    
+    res.json({
+      success: true,
+      data: {
+        health,
+        statistics: stats,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get performance metrics',
+      error: error.message
+    });
+  }
 });
 
 /**
