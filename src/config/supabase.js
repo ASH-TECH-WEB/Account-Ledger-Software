@@ -4,7 +4,6 @@ require('dotenv').config();
 // Supabase configuration
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
   console.error('❌ CRITICAL ERROR: Missing required environment variables');
@@ -14,12 +13,8 @@ if (!supabaseUrl || !supabaseKey) {
   process.exit(1);
 }
 
-// Create Supabase client (with RLS)
+// Create Supabase client
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Create Supabase service client (bypasses RLS)
-const supabaseService = supabaseServiceKey ? 
-  createClient(supabaseUrl, supabaseServiceKey) : null;
 
 // Test connection
 const testConnection = async () => {
@@ -41,6 +36,5 @@ const testConnection = async () => {
 
 module.exports = {
   supabase,
-  supabaseService,
   testConnection
 };
