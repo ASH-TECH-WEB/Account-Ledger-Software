@@ -1,4 +1,4 @@
-const { supabase } = require('../../config/supabase');
+const { supabase, supabaseService } = require('../../config/supabase');
 
 class User {
   static async create(userData) {
@@ -81,11 +81,20 @@ class User {
     try {
       console.log(`🗑️ Attempting to delete user with ID: ${id}`);
       
+      // Use service client to bypass RLS policies
+      const client = supabaseService || supabase;
+      
+      if (!supabaseService) {
+        console.log('⚠️ Service role key not available, using regular client');
+      } else {
+        console.log('🔑 Using service role client to bypass RLS');
+      }
+      
       // First, let's try to delete related data manually to avoid RLS issues
       console.log('🧹 Cleaning up related data...');
       
       // Delete ledger entries
-      const { error: ledgerError } = await supabase
+      const { error: ledgerError } = await client
         .from('ledger_entries')
         .delete()
         .eq('user_id', id);
@@ -97,7 +106,7 @@ class User {
       }
       
       // Delete parties
-      const { error: partiesError } = await supabase
+      const { error: partiesError } = await client
         .from('parties')
         .delete()
         .eq('user_id', id);
@@ -110,7 +119,7 @@ class User {
       
       // Now delete the user
       console.log('👤 Deleting user...');
-      const { error } = await supabase
+      const { error } = await client
         .from('users')
         .delete()
         .eq('id', id);
