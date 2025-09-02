@@ -48,6 +48,7 @@ router.get('/', (req, res) => {
       profile: 'GET /profile (protected)',
       updateProfile: 'PUT /profile (protected)',
       changePassword: 'PUT /change-password (protected)',
+      deleteAccount: 'DELETE /account (protected)',
       logout: 'POST /logout (protected)'
     }
   });
