@@ -693,6 +693,46 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Sync password with Firebase (for password reset flow)
+const syncPassword = async (req, res) => {
+  try {
+    const { email, newPassword } = req.body;
+
+    if (!email || !newPassword) {
+      return sendErrorResponse(res, 400, 'Email and new password are required');
+    }
+
+    const validatedEmail = validateEmail(email);
+    const validatedPassword = validatePassword(newPassword);
+
+    // Find user by email
+    const user = await User.findByEmail(validatedEmail);
+    if (!user) {
+      return sendErrorResponse(res, 404, 'User not found');
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(12);
+    const hashedPassword = await bcrypt.hash(validatedPassword, salt);
+
+    // Update password in database
+    await User.update(user.id, { 
+      password_hash: hashedPassword,
+      updated_at: new Date().toISOString()
+    });
+
+    // Log password sync
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔄 Password synced for: ${validatedEmail} at ${new Date().toISOString()}`);
+    }
+
+    sendSuccessResponse(res, null, 'Password synced successfully');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to sync password', error);
+  }
+};
+
 // Delete account permanently
 const deleteAccount = async (req, res) => {
   try {
@@ -752,6 +792,7 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  syncPassword,
   deleteAccount,
   logout
 }; 

@@ -31,6 +31,7 @@ const {
   changePassword,
   forgotPassword,
   resetPassword,
+  syncPassword,
   deleteAccount,
   logout
 } = require('../controllers/auth.controller');
@@ -41,6 +42,7 @@ router.post('/google-login', googleLogin);
 router.post('/login', login);
 router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
+router.post('/sync-password', syncPassword);
 
 // Add GET route for authentication status check
 router.get('/', (req, res) => {
