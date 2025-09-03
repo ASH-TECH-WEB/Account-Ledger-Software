@@ -360,6 +360,12 @@ const googleLogin = async (req, res) => {
       profilePicture: profilePicture || null
     });
 
+    // Check if user exists (prevent unregistered users from logging in)
+    if (!user) {
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 401, 'User not registered. Please register first before logging in.');
+    }
+
     // Generate token
     const token = generateToken(user.id);
 

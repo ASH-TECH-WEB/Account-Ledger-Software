@@ -126,20 +126,9 @@ class User {
         return await this.update(user.id, updateData);
       }
 
-      // Create new Google user
-      const newUserData = {
-        name: fullname,
-        email: email.toLowerCase(),
-        google_id: googleId,
-        profile_picture: profilePicture,
-        auth_provider: 'google',
-        email_verified: true,
-        phone: '', // Empty for Google users
-        password_hash: '', // Empty for Google users
-        last_login: new Date().toISOString()
-      };
-
-      return await this.create(newUserData);
+      // User not found - return null instead of creating new user
+      // This prevents unregistered users from automatically logging in
+      return null;
     } catch (error) {
       throw error;
     }
