@@ -8,6 +8,8 @@
  * - POST /login - User login with email/password
  * - POST /google-login - Google OAuth login/registration
  * - POST /register/user - User registration (supports both email and Google)
+ * - POST /forgot-password - Initiate password reset
+ * - POST /reset-password - Reset password with token
  * - GET /profile - Get current user profile
  * - PUT /profile - Update user profile
  * - PUT /change-password - Change user password
@@ -27,6 +29,8 @@ const {
   getProfile,
   updateProfile,
   changePassword,
+  forgotPassword,
+  resetPassword,
   deleteAccount,
   logout
 } = require('../controllers/auth.controller');
@@ -35,6 +39,8 @@ const {
 router.post('/register/user', register);
 router.post('/google-login', googleLogin);
 router.post('/login', login);
+router.post('/forgot-password', forgotPassword);
+router.post('/reset-password', resetPassword);
 
 // Add GET route for authentication status check
 router.get('/', (req, res) => {
@@ -45,6 +51,8 @@ router.get('/', (req, res) => {
       login: 'POST /login',
       register: 'POST /register/user',
       googleLogin: 'POST /google-login',
+      forgotPassword: 'POST /forgot-password',
+      resetPassword: 'POST /reset-password',
       profile: 'GET /profile (protected)',
       updateProfile: 'PUT /profile (protected)',
       changePassword: 'PUT /change-password (protected)',

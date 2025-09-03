@@ -623,6 +623,76 @@ const changePassword = async (req, res) => {
   }
 };
 
+// Forgot password - initiate password reset
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    // Validate email
+    if (!email || typeof email !== 'string') {
+      return sendErrorResponse(res, 400, 'Email is required');
+    }
+
+    const validatedEmail = validateEmail(email);
+
+    // Check if user exists
+    const user = await User.findByEmail(validatedEmail);
+    if (!user) {
+      // For security, don't reveal if email exists or not
+      return sendSuccessResponse(res, null, 'If an account with that email exists, a password reset link has been sent');
+    }
+
+    // Check if user can use password authentication (not Google-only)
+    if (user.auth_provider === 'google' && !user.password_hash) {
+      return sendErrorResponse(res, 400, 'This account was created with Google. Please use Google login or contact support.');
+    }
+
+    // In a real implementation, you would:
+    // 1. Generate a secure reset token
+    // 2. Store it in database with expiration
+    // 3. Send email with reset link
+    // 4. For now, we'll just return success since Firebase handles the email sending
+
+    // Log password reset request
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔐 Password reset requested for: ${validatedEmail} at ${new Date().toISOString()}`);
+    }
+
+    sendSuccessResponse(res, null, 'If an account with that email exists, a password reset link has been sent');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to process password reset request', error);
+  }
+};
+
+// Reset password with token
+const resetPassword = async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return sendErrorResponse(res, 400, 'Reset token and new password are required');
+    }
+
+    // Validate new password
+    const validatedPassword = validatePassword(newPassword);
+
+    // In a real implementation, you would:
+    // 1. Verify the reset token
+    // 2. Check if token is not expired
+    // 3. Get user from token
+    // 4. Hash new password
+    // 5. Update user password
+    // 6. Invalidate the token
+
+    // For now, we'll return an error since this should be handled by Firebase
+    return sendErrorResponse(res, 400, 'Password reset should be completed through the email link sent to you');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to reset password', error);
+  }
+};
+
 // Delete account permanently
 const deleteAccount = async (req, res) => {
   try {
@@ -680,6 +750,8 @@ module.exports = {
   getProfile,
   updateProfile,
   changePassword,
+  forgotPassword,
+  resetPassword,
   deleteAccount,
   logout
 }; 
