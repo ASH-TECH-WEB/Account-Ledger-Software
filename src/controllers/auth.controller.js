@@ -527,7 +527,7 @@ const getProfile = async (req, res) => {
 // Update user profile (updated to handle Google users)
 const updateProfile = async (req, res) => {
   try {
-    const { fullname, email, phone } = req.body;
+    const { fullname, email, phone, address, city, state, pincode } = req.body;
     const updates = {};
 
     if (fullname) updates.name = fullname;
@@ -537,6 +537,12 @@ const updateProfile = async (req, res) => {
     if (phone && (req.user.auth_provider === 'email' || req.user.auth_provider === 'both')) {
       updates.phone = phone;
     }
+    
+    // Allow address fields update for all users
+    if (address) updates.address = address;
+    if (city) updates.city = city;
+    if (state) updates.state = state;
+    if (pincode) updates.pincode = pincode;
 
     const user = await User.update(req.user.id, updates);
 
@@ -555,6 +561,10 @@ const updateProfile = async (req, res) => {
         fullname: user.name,
         email: user.email,
         phone: user.phone,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        pincode: user.pincode,
         role: 'user',
         googleId: user.google_id,
         profilePicture: user.profile_picture,
