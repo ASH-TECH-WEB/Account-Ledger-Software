@@ -7,15 +7,15 @@
 const { execSync } = require('child_process');
 
 const envVars = {
-  'SUPABASE_URL': 'https://fwbizsvzkwzfahvgnegr.supabase.co',
-  'SUPABASE_ANON_KEY': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3Yml6c3Z6a3d6ZmFodmduZWdyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2MDYxMzAsImV4cCI6MjA3MDE4MjEzMH0.3cakpeaWMbGpc_S3Ia5ZD444Z5jX6xYHqm8tXmNva7U',
-  'SUPABASE_SERVICE_ROLE_KEY': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ3Yml6c3Z6a3d6ZmFodmduZWdyIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NDYwNjEzMCwiZXhwIjoyMDcwMTgyMTMwfQ.X0CeWhRaQOwQZMtn0WXb1WW-F5lGD1c1HhOxUXIK4BQ',
-  'POSTGRES_URL': 'postgresql://postgres:count123@db.fwbizsvzkwzfahvgnegr.supabase.co:5432/postgres',
-  'JWT_SECRET': 'your-super-secret-jwt-key-change-this-in-production-USE-STRONG-SECRET-IN-PRODUCTION',
-  'JWT_EXPIRES_IN': '7d',
-  'CORS_ORIGIN': 'https://escrow-account-ledger.web.app',
-  'NODE_ENV': 'production',
-  'PORT': '5000'
+  'SUPABASE_URL': process.env.SUPABASE_URL || 'YOUR_SUPABASE_URL',
+  'SUPABASE_ANON_KEY': process.env.SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY',
+  'SUPABASE_SERVICE_ROLE_KEY': process.env.SUPABASE_SERVICE_ROLE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY',
+  'POSTGRES_URL': process.env.POSTGRES_URL || 'YOUR_POSTGRES_URL',
+  'JWT_SECRET': process.env.JWT_SECRET || 'YOUR_JWT_SECRET',
+  'JWT_EXPIRES_IN': process.env.JWT_EXPIRES_IN || '7d',
+  'CORS_ORIGIN': process.env.CORS_ORIGIN || 'https://escrow-account-ledger.web.app',
+  'NODE_ENV': process.env.NODE_ENV || 'production',
+  'PORT': process.env.PORT || '5000'
 };
 
 console.log('🔧 Setting Vercel Environment Variables...\n');

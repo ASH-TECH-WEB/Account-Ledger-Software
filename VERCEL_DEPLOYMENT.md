@@ -38,8 +38,9 @@ chmod +x deploy-vercel.sh
 ### Required Environment Variables in Vercel Dashboard:
 ```
 NODE_ENV=production
-SUPABASE_URL=https://fwbizsvzkwzfahvgnegr.supabase.co
-SUPABASE_ANON_KEY=your-supabase-key
+SUPABASE_URL=your-supabase-url
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 POSTGRES_URL=your-postgres-connection-string
 JWT_SECRET=your-jwt-secret
 CORS_ORIGIN=https://escrow-account-ledger.web.app
