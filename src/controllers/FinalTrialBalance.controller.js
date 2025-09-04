@@ -288,10 +288,32 @@ const getFinalTrialBalance = async (req, res) => {
 
     // Entries fetched successfully
     
+    // Get all valid parties from parties table to filter out invalid entries
+    const validParties = await Party.findByUserId(userId);
+    const validPartyNames = new Set(validParties.map(party => party.party_name));
+    
+    // Filter entries to only include valid parties (excluding virtual parties)
+    const validEntries = entries.filter(entry => {
+      const partyName = entry.party_name;
+      const remarks = entry.remarks || '';
+      
+      // Allow virtual parties (Commission, AQC, Company Account)
+      const isVirtualParty = partyName.toLowerCase().includes('commission') ||
+                            partyName.toLowerCase().includes('aqc') ||
+                            partyName.toLowerCase().includes('company') ||
+                            partyName.toLowerCase().includes('comp') ||
+                            partyName.toLowerCase().includes('auto-calculated') ||
+                            remarks.toLowerCase().includes('commission') ||
+                            remarks.toLowerCase().includes('auto-calculated');
+      
+      // Allow if it's a virtual party OR if it exists in parties table
+      return isVirtualParty || validPartyNames.has(partyName);
+    });
+    
     // Process entries to get individual transactions for trial balance
     const partyTransactions = new Map(); // Use Map to group by party name
 
-    entries.forEach(entry => {
+    validEntries.forEach(entry => {
       const partyName = entry.party_name;
       const credit = Number(entry.credit) || 0;
       const debit = Number(entry.debit) || 0;
@@ -622,10 +644,32 @@ const forceRefreshTrialBalance = async (req, res) => {
       throw error;
     }
 
+    // Get all valid parties from parties table to filter out invalid entries
+    const validParties = await Party.findByUserId(userId);
+    const validPartyNames = new Set(validParties.map(party => party.party_name));
+    
+    // Filter entries to only include valid parties (excluding virtual parties)
+    const validEntries = entries.filter(entry => {
+      const partyName = entry.party_name;
+      const remarks = entry.remarks || '';
+      
+      // Allow virtual parties (Commission, AQC, Company Account)
+      const isVirtualParty = partyName.toLowerCase().includes('commission') ||
+                            partyName.toLowerCase().includes('aqc') ||
+                            partyName.toLowerCase().includes('company') ||
+                            partyName.toLowerCase().includes('comp') ||
+                            partyName.toLowerCase().includes('auto-calculated') ||
+                            remarks.toLowerCase().includes('commission') ||
+                            remarks.toLowerCase().includes('auto-calculated');
+      
+      // Allow if it's a virtual party OR if it exists in parties table
+      return isVirtualParty || validPartyNames.has(partyName);
+    });
+
     // Process entries to get individual transactions for trial balance
     const partyTransactions = new Map();
 
-    entries.forEach(entry => {
+    validEntries.forEach(entry => {
       const partyName = entry.party_name;
       const credit = Number(entry.credit) || 0;
       const debit = Number(entry.debit) || 0;
