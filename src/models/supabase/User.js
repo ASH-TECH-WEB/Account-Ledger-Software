@@ -138,7 +138,7 @@ class User {
   static async canUsePassword(userId) {
     try {
       const user = await this.findById(userId);
-      return user && user.auth_provider === 'email' && user.password_hash;
+      return user && (user.auth_provider === 'email' || user.auth_provider === 'both') && user.password_hash;
     } catch (error) {
       return false;
     }
