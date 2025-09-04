@@ -8,9 +8,19 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   name VARCHAR(255),
   phone VARCHAR(20),
+  address TEXT,
+  city VARCHAR(100),
+  state VARCHAR(100),
+  pincode VARCHAR(20),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add missing columns to existing users table (if they don't exist)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS state VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS pincode VARCHAR(20);
 
 -- Parties table
 CREATE TABLE IF NOT EXISTS parties (
