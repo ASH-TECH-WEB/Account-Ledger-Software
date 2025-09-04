@@ -60,6 +60,7 @@ const finalTrialBalanceRoutes = require('./src/routes/FinalTrialBalance.routes')
 const userSettingsRoutes = require('./src/routes/userSettings.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
 const commissionTransactionRoutes = require('./src/routes/commissionTransaction.routes');
+const uploadRoutes = require('./src/routes/upload.routes');
 
 // Initialize Express application
 const app = express();
@@ -562,6 +563,7 @@ app.use('/api/final-trial-balance', finalTrialBalanceRoutes);
 app.use('/api/settings', userSettingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/commission-transactions', commissionTransactionRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // Add missing API routes for better consistency
 app.use('/api/auth', authRoutes); // Alternative auth route

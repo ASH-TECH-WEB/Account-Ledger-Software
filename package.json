@@ -30,7 +30,7 @@
   "author": "Account Ledger Team",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.54.0",
+    "@supabase/supabase-js": "^2.57.0",
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",

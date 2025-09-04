@@ -531,7 +531,7 @@ const getProfile = async (req, res) => {
 // Update user profile (updated to handle Google users)
 const updateProfile = async (req, res) => {
   try {
-    const { fullname, email, phone, address, city, state, pincode } = req.body;
+    const { fullname, email, phone, address, city, state, pincode, profilePicture } = req.body;
     const updates = {};
 
     if (fullname) updates.name = fullname;
@@ -547,6 +547,9 @@ const updateProfile = async (req, res) => {
     if (city) updates.city = city;
     if (state) updates.state = state;
     if (pincode) updates.pincode = pincode;
+    
+    // Allow profile picture update for all users
+    if (profilePicture) updates.profile_picture = profilePicture;
 
     const user = await User.update(req.user.id, updates);
 
