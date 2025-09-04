@@ -616,14 +616,35 @@ const deleteParty = async (req, res) => {
       });
     }
 
+    const partyName = party.party_name;
+
+    // Check for old records (Monday Final settled transactions)
+    const LedgerEntry = require('../models/supabase/LedgerEntry');
+    const entries = await LedgerEntry.findByPartyName(userId, partyName);
+    const hasOldRecords = entries.some(entry => entry.is_old_record === true);
+    
+    if (hasOldRecords) {
+      return res.status(403).json({
+        success: false,
+        message: `Cannot delete party "${partyName}". This party has Monday Final settled transactions. Delete the Monday Final entries first to unsettle transactions.`
+      });
+    }
+
+    // Delete all ledger entries for this party first
+    for (const entry of entries) {
+      await LedgerEntry.delete(entry.id);
+    }
+
+    // Then delete the party
     await Party.delete(id);
 
     res.json({
       success: true,
-      message: 'Party deleted successfully',
+      message: `Party "${partyName}" and all its transactions deleted successfully`,
       data: {
         id: party.id,
-        partyName: party.party_name
+        partyName: party.party_name,
+        deletedTransactions: entries.length
       }
     });
   } catch (error) {
