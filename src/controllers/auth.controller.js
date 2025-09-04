@@ -417,10 +417,10 @@ const login = async (req, res) => {
       return sendErrorResponse(res, 401, 'Invalid email or password');
     }
 
-    // Check if user is Google-only
-    if (user.auth_provider === 'google' && !user.password_hash) {
+    // Check if user is Google-only (no password set)
+    if (user.auth_provider === 'google' && (!user.password_hash || user.password_hash === '')) {
       recordLoginAttempt(validatedEmail, false);
-      return sendErrorResponse(res, 401, 'This account was created with Google. Please use Google login.');
+      return sendErrorResponse(res, 401, 'This account was created with Google. Please use Google login or set up a password first.');
     }
 
     // Verify password with timing attack protection
@@ -699,6 +699,57 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Setup password for Google users (first time password setup)
+const setupPassword = async (req, res) => {
+  try {
+    const { password } = req.body;
+    const userId = req.user.id; // From JWT token
+
+    if (!password) {
+      return sendErrorResponse(res, 400, 'Password is required');
+    }
+
+    const validatedPassword = validatePassword(password);
+
+    // Additional password strength check
+    if (validatedPassword.includes('password') || validatedPassword.includes('123')) {
+      return sendErrorResponse(res, 400, 'Password is too weak. Please choose a stronger password.');
+    }
+
+    // Get current user
+    const user = await User.findById(userId);
+    if (!user) {
+      return sendErrorResponse(res, 404, 'User not found');
+    }
+
+    // Check if user already has a password
+    if (user.password_hash && user.password_hash !== '') {
+      return sendErrorResponse(res, 400, 'Password already set. Use change-password to update.');
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(SECURITY_CONFIG.SALT_ROUNDS);
+    const hashedPassword = await bcrypt.hash(validatedPassword, salt);
+
+    // Update user with password and change auth provider
+    await User.update(userId, { 
+      password_hash: hashedPassword,
+      auth_provider: 'both', // User can now use both Google and email/password
+      updated_at: new Date().toISOString()
+    });
+
+    // Log password setup
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔐 Password setup for user: ${user.email} at ${new Date().toISOString()}`);
+    }
+
+    sendSuccessResponse(res, null, 'Password setup successfully. You can now login with email/password or Google.');
+
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to setup password', error);
+  }
+};
+
 // Sync password with Firebase (for password reset flow)
 const syncPassword = async (req, res) => {
   try {
@@ -798,6 +849,7 @@ module.exports = {
   changePassword,
   forgotPassword,
   resetPassword,
+  setupPassword,
   syncPassword,
   deleteAccount,
   logout

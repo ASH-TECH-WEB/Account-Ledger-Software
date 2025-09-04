@@ -13,6 +13,7 @@
  * - GET /profile - Get current user profile
  * - PUT /profile - Update user profile
  * - PUT /change-password - Change user password
+ * - POST /setup-password - Setup password for Google users
  * - POST /logout - User logout
  * 
  * @author Account Ledger Team
@@ -31,6 +32,7 @@ const {
   changePassword,
   forgotPassword,
   resetPassword,
+  setupPassword,
   syncPassword,
   deleteAccount,
   logout
@@ -58,6 +60,7 @@ router.get('/', (req, res) => {
       profile: 'GET /profile (protected)',
       updateProfile: 'PUT /profile (protected)',
       changePassword: 'PUT /change-password (protected)',
+      setupPassword: 'POST /setup-password (protected)',
       logout: 'POST /logout (protected)'
     }
   });
@@ -77,6 +80,7 @@ router.get('/status', (req, res) => {
 router.get('/profile', authenticateToken, getProfile);
 router.put('/profile', authenticateToken, updateProfile);
 router.put('/change-password', authenticateToken, changePassword);
+router.post('/setup-password', authenticateToken, setupPassword);
 router.delete('/account', authenticateToken, deleteAccount);
 router.post('/logout', authenticateToken, logout);
 
