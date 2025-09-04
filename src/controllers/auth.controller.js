@@ -533,8 +533,8 @@ const updateProfile = async (req, res) => {
     if (fullname) updates.name = fullname;
     if (email) updates.email = email.toLowerCase();
     
-    // Only allow phone update for email users
-    if (phone && req.user.auth_provider === 'email') {
+    // Allow phone update for email and both auth providers
+    if (phone && (req.user.auth_provider === 'email' || req.user.auth_provider === 'both')) {
       updates.phone = phone;
     }
 
