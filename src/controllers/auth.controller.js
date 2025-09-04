@@ -483,7 +483,8 @@ const login = async (req, res) => {
 // Get user profile (updated to include Google fields)
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
+    // Use user from req.user (set by auth middleware)
+    const user = req.user;
     
     if (!user) {
       return res.status(404).json({
@@ -505,7 +506,8 @@ const getProfile = async (req, res) => {
       emailVerified: user.email_verified,
       lastLogin: user.last_login,
       createdAt: user.created_at,
-      updatedAt: user.updated_at
+      updatedAt: user.updated_at,
+      password_hash: user.password_hash // Include password_hash for frontend logic
     };
 
     res.json({
@@ -532,11 +534,11 @@ const updateProfile = async (req, res) => {
     if (email) updates.email = email.toLowerCase();
     
     // Only allow phone update for email users
-    if (phone && req.user.authProvider === 'email') {
+    if (phone && req.user.auth_provider === 'email') {
       updates.phone = phone;
     }
 
-    const user = await User.update(req.user.userId, updates);
+    const user = await User.update(req.user.id, updates);
 
     if (!user) {
       return res.status(404).json({
@@ -582,7 +584,7 @@ const changePassword = async (req, res) => {
     }
 
     // Check if user can use password authentication
-    const canUsePassword = await User.canUsePassword(req.user.userId);
+    const canUsePassword = await User.canUsePassword(req.user.id);
     if (!canUsePassword) {
       return res.status(400).json({
         success: false,
@@ -591,7 +593,7 @@ const changePassword = async (req, res) => {
     }
 
     // Get user with password
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -613,7 +615,7 @@ const changePassword = async (req, res) => {
     const hashedNewPassword = await bcrypt.hash(newPassword, salt);
 
     // Update password
-    await User.update(req.user.userId, { password_hash: hashedNewPassword });
+    await User.update(req.user.id, { password_hash: hashedNewPassword });
 
     res.json({
       success: true,
