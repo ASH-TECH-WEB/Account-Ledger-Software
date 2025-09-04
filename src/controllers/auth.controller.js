@@ -10,8 +10,25 @@
  */
 
 const jwt = require('jsonwebtoken');
+const admin = require('firebase-admin');
 const User = require('../models/supabase/User');
 const bcrypt = require('bcryptjs');
+
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+      })
+    });
+    console.log('✅ Firebase Admin SDK initialized');
+  } catch (error) {
+    console.warn('⚠️ Firebase Admin SDK initialization failed:', error.message);
+  }
+}
 
 // Security constants
 const SECURITY_CONFIG = {
@@ -772,24 +789,42 @@ const setupPassword = async (req, res) => {
 // Sync password with Firebase (for password reset flow)
 const syncPassword = async (req, res) => {
   try {
+    console.log('🔄 Password sync request received:', {
+      email: req.body.email,
+      hasPassword: !!req.body.newPassword,
+      timestamp: new Date().toISOString()
+    });
+
     const { email, newPassword } = req.body;
 
     if (!email || !newPassword) {
+      console.log('❌ Missing required fields');
       return sendErrorResponse(res, 400, 'Email and new password are required');
     }
 
     const validatedEmail = validateEmail(email);
     const validatedPassword = validatePassword(newPassword);
 
+    console.log('✅ Input validation passed');
+
     // Find user by email
     const user = await User.findByEmail(validatedEmail);
     if (!user) {
+      console.log('❌ User not found:', validatedEmail);
       return sendErrorResponse(res, 404, 'User not found');
     }
+
+    console.log('✅ User found:', {
+      id: user.id,
+      email: user.email,
+      authProvider: user.auth_provider
+    });
 
     // Hash new password
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(validatedPassword, salt);
+
+    console.log('✅ Password hashed successfully');
 
     // Update password in database
     await User.update(user.id, { 
@@ -797,14 +832,26 @@ const syncPassword = async (req, res) => {
       updated_at: new Date().toISOString()
     });
 
-    // Log password sync
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`🔄 Password synced for: ${validatedEmail} at ${new Date().toISOString()}`);
+    console.log('✅ Password updated in database');
+
+    // Verify the update
+    const updatedUser = await User.findByEmail(validatedEmail);
+    const isPasswordValid = await bcrypt.compare(validatedPassword, updatedUser.password_hash);
+    
+    if (isPasswordValid) {
+      console.log('✅ Password verification successful');
+    } else {
+      console.log('❌ Password verification failed');
+      return sendErrorResponse(res, 500, 'Password sync verification failed');
     }
+
+    // Log password sync
+    console.log(`🔄 Password synced successfully for: ${validatedEmail} at ${new Date().toISOString()}`);
 
     sendSuccessResponse(res, null, 'Password synced successfully');
 
   } catch (error) {
+    console.error('❌ Password sync error:', error);
     sendErrorResponse(res, 500, 'Failed to sync password', error);
   }
 };
@@ -812,7 +859,9 @@ const syncPassword = async (req, res) => {
 // Delete account permanently
 const deleteAccount = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.user.id; // Fixed: was req.user.userId
+    
+    console.log('🗑️ Starting account deletion for user:', userId);
     
     // Get user details before deletion for logging
     const user = await User.findById(userId);
@@ -820,21 +869,43 @@ const deleteAccount = async (req, res) => {
       return sendErrorResponse(res, 404, 'User not found');
     }
 
+    console.log('🗑️ User found for deletion:', {
+      id: user.id,
+      email: user.email,
+      authProvider: user.auth_provider
+    });
+
     // Delete user from database (this will cascade delete related data)
     const deleted = await User.delete(userId);
     
     if (!deleted) {
-      return sendErrorResponse(res, 500, 'Failed to delete account');
+      console.error('❌ Database deletion failed for user:', userId);
+      return sendErrorResponse(res, 500, 'Failed to delete account from database');
+    }
+
+    console.log('✅ Database deletion successful for user:', userId);
+
+    // Delete Firebase user if it exists
+    try {
+      if (user.firebase_uid) {
+        console.log('🗑️ Deleting Firebase user:', user.firebase_uid);
+        await admin.auth().deleteUser(user.firebase_uid);
+        console.log('✅ Firebase user deleted successfully');
+      } else {
+        console.log('ℹ️ No Firebase UID found, skipping Firebase deletion');
+      }
+    } catch (firebaseError) {
+      console.warn('⚠️ Firebase user deletion failed (continuing):', firebaseError.message);
+      // Continue even if Firebase deletion fails
     }
 
     // Log account deletion
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`🗑️ Account deleted permanently: ${user.email} at ${new Date().toISOString()}`);
-    }
+    console.log(`🗑️ Account deleted permanently: ${user.email} at ${new Date().toISOString()}`);
 
-    sendSuccessResponse(res, null, 'Account deleted successfully');
+    sendSuccessResponse(res, null, 'Account deleted successfully from both database and Firebase');
 
   } catch (error) {
+    console.error('❌ Account deletion error:', error);
     sendErrorResponse(res, 500, 'Failed to delete account', error);
   }
 };
