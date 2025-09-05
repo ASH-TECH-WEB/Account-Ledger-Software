@@ -61,6 +61,7 @@ const userSettingsRoutes = require('./src/routes/userSettings.routes');
 const dashboardRoutes = require('./src/routes/dashboard.routes');
 const commissionTransactionRoutes = require('./src/routes/commissionTransaction.routes');
 const uploadRoutes = require('./src/routes/upload.routes');
+const adminRoutes = require('./src/routes/admin.routes');
 
 // Initialize Express application
 const app = express();
@@ -564,6 +565,7 @@ app.use('/api/settings', userSettingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/commission-transactions', commissionTransactionRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Add missing API routes for better consistency
 app.use('/api/auth', authRoutes); // Alternative auth route
