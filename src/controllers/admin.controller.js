@@ -259,6 +259,16 @@ const getAllUsers = async (req, res) => {
         phone,
         city,
         state,
+        is_approved,
+        approved_at,
+        auth_provider,
+        google_id,
+        profile_picture,
+        email_verified,
+        firebase_uid,
+        last_login,
+        status,
+        company_account,
         created_at,
         updated_at
       `)
@@ -751,7 +761,18 @@ const disapproveUser = async (req, res) => {
         await admin.auth().deleteUser(user.firebase_uid);
         console.log('✅ Firebase user deleted successfully');
       } else {
-        console.log('ℹ️ No Firebase UID found, skipping Firebase deletion');
+        console.log('ℹ️ No Firebase UID found, trying to find by email');
+        // Try to find Firebase user by email and delete
+        try {
+          const firebaseUser = await admin.auth().getUserByEmail(user.email);
+          if (firebaseUser) {
+            console.log('🗑️ Found Firebase user by email, deleting:', firebaseUser.uid);
+            await admin.auth().deleteUser(firebaseUser.uid);
+            console.log('✅ Firebase user deleted by email lookup');
+          }
+        } catch (emailLookupError) {
+          console.log('ℹ️ No Firebase user found by email, skipping Firebase deletion');
+        }
       }
     } catch (firebaseError) {
       console.warn('⚠️ Firebase user deletion failed (continuing):', firebaseError.message);

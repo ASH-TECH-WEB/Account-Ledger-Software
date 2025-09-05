@@ -313,6 +313,40 @@ const register = async (req, res) => {
     // Create user in database
     const user = await User.create(userData);
 
+    // If this is a Google user, we need to get the Firebase UID
+    // For email users, we'll need to create Firebase user first
+    let firebaseUid = null;
+    
+    if (googleId) {
+      // For Google users, the googleId is the Firebase UID
+      firebaseUid = googleId;
+    } else {
+      // For email users, we need to create Firebase user
+      try {
+        const firebaseUser = await admin.auth().createUser({
+          email: email.toLowerCase(),
+          password: password,
+          displayName: fullname,
+          emailVerified: false
+        });
+        firebaseUid = firebaseUser.uid;
+        console.log('✅ Firebase user created for email registration:', firebaseUid);
+      } catch (firebaseError) {
+        console.warn('⚠️ Firebase user creation failed (continuing):', firebaseError.message);
+        // Continue even if Firebase creation fails
+      }
+    }
+
+    // Update user with Firebase UID if we have it
+    if (firebaseUid) {
+      try {
+        await User.update(user.id, { firebase_uid: firebaseUid });
+        console.log('✅ Firebase UID updated for user:', user.id);
+      } catch (updateError) {
+        console.warn('⚠️ Failed to update Firebase UID:', updateError.message);
+      }
+    }
+
     // Generate token
     const token = generateToken(user.id);
 
@@ -383,14 +417,24 @@ const googleLogin = async (req, res) => {
       profilePicture: profilePicture || null
     });
 
+    // Update user with Firebase UID if not already set
+    if (user && !user.firebase_uid) {
+      try {
+        await User.update(user.id, { firebase_uid: validatedGoogleId });
+        console.log('✅ Firebase UID updated for Google user:', user.id);
+      } catch (updateError) {
+        console.warn('⚠️ Failed to update Firebase UID for Google user:', updateError.message);
+      }
+    }
+
     // Check if user exists (prevent unregistered users from logging in)
     if (!user) {
       recordLoginAttempt(validatedEmail, false);
       return sendErrorResponse(res, 401, 'User not registered. Please register first before logging in.');
     }
 
-    // Check if user is approved
-    if (!user.is_approved) {
+    // Check if user is approved (only if is_approved field exists)
+    if (user.is_approved !== undefined && !user.is_approved) {
       recordLoginAttempt(validatedEmail, false);
       return sendErrorResponse(res, 403, 'Your account is pending admin approval. Please wait for approval before logging in.', {
         requiresApproval: true,
@@ -449,8 +493,8 @@ const login = async (req, res) => {
       return sendErrorResponse(res, 401, 'Invalid email or password');
     }
 
-    // Check if user is approved
-    if (!user.is_approved) {
+    // Check if user is approved (only if is_approved field exists)
+    if (user.is_approved !== undefined && !user.is_approved) {
       recordLoginAttempt(validatedEmail, false);
       return sendErrorResponse(res, 403, 'Your account is pending admin approval. Please wait for approval before logging in.', {
         requiresApproval: true,

@@ -147,6 +147,18 @@ class User {
   // Method to get pending users (awaiting approval)
   static async getPendingUsers() {
     try {
+      // First check if is_approved column exists
+      const { data: testData, error: testError } = await supabase
+        .from('users')
+        .select('is_approved')
+        .limit(1);
+
+      if (testError && testError.code === '42703') {
+        // Column doesn't exist, return empty array for now
+        console.log('⚠️ is_approved column does not exist, returning empty pending users');
+        return [];
+      }
+
       const { data, error } = await supabase
         .from('users')
         .select('*')
@@ -163,6 +175,25 @@ class User {
   // Method to approve a user
   static async approveUser(userId) {
     try {
+      // First check if is_approved column exists
+      const { data: testData, error: testError } = await supabase
+        .from('users')
+        .select('is_approved')
+        .limit(1);
+
+      if (testError && testError.code === '42703') {
+        // Column doesn't exist, just return the user
+        console.log('⚠️ is_approved column does not exist, skipping approval update');
+        const { data: user, error: userError } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+        
+        if (userError) throw userError;
+        return user;
+      }
+
       const { data, error } = await supabase
         .from('users')
         .update({ 

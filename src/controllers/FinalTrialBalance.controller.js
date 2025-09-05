@@ -377,42 +377,86 @@ const getFinalTrialBalance = async (req, res) => {
       partyEntry.balance = partyEntry.creditTotal - partyEntry.debitTotal;
     });
     
-    // Convert Map to array for trial balance
-    const trialBalance = Array.from(partyTransactions.values())
+    // Convert Map to array for traditional trial balance
+    const allParties = Array.from(partyTransactions.values())
       .filter(party => party.creditTotal > 0 || party.debitTotal > 0); // Only show parties with transactions
     
-    // Transactions processed successfully
+    // Create traditional trial balance entries
+    const creditEntries = [];
+    const debitEntries = [];
     
-    // Commission and Comp transactions processed
+    allParties.forEach(party => {
+      // Add credit entry if party has credit amount
+      if (party.creditTotal > 0) {
+        creditEntries.push({
+          id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-credit`,
+          name: party.name,
+          amount: party.creditTotal,
+          type: 'credit',
+          remarks: `Credit Total for ${party.name}`,
+          date: party.date
+        });
+      }
+      
+      // Add debit entry if party has debit amount
+      if (party.debitTotal > 0) {
+        debitEntries.push({
+          id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-debit`,
+          name: party.name,
+          amount: party.debitTotal,
+          type: 'debit',
+          remarks: `Debit Total for ${party.name}`,
+          date: party.date
+        });
+      }
+    });
     
-    // Party transactions processed
-
-    // Calculate totals efficiently
-    const totalCredit = trialBalance.reduce((sum, party) => sum + party.creditTotal, 0);
-    const totalDebit = trialBalance.reduce((sum, party) => sum + party.debitTotal, 0);
+    // Sort entries by amount (largest first) for better readability
+    creditEntries.sort((a, b) => b.amount - a.amount);
+    debitEntries.sort((a, b) => b.amount - a.amount);
+    
+    // Calculate totals from actual entries
+    const totalCredit = creditEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const totalDebit = debitEntries.reduce((sum, entry) => sum + entry.amount, 0);
     const totalBalance = totalCredit - totalDebit;
+    
+    // Create trial balance data structure
+    const trialBalanceData = {
+      creditEntries,
+      debitEntries,
+      creditTotal: totalCredit,
+      debitTotal: totalDebit,
+      balanceDifference: totalBalance
+    };
 
-    // Apply pagination
-    const total = trialBalance.length;
-    const skip = (validatedPage - 1) * validatedLimit;
-    const paginatedTrialBalance = trialBalance.slice(skip, skip + validatedLimit);
+    // Apply pagination to credit and debit entries separately
+    const totalCreditEntries = creditEntries.length;
+    const totalDebitEntries = debitEntries.length;
+    const total = totalCreditEntries + totalDebitEntries;
+    
+    const creditSkip = (validatedPage - 1) * validatedLimit;
+    const debitSkip = Math.max(0, (validatedPage - 1) * validatedLimit - totalCreditEntries);
+    
+    const paginatedCreditEntries = creditEntries.slice(creditSkip, creditSkip + validatedLimit);
+    const paginatedDebitEntries = debitEntries.slice(debitSkip, debitSkip + validatedLimit);
 
     const calculationTime = Date.now() - calculationStartTime;
     logPerformance('Trial balance calculation', calculationTime, {
       userId,
       partyName: validatedPartyName,
       totalParties: total,
+      creditEntries: totalCreditEntries,
+      debitEntries: totalDebitEntries,
       page: validatedPage,
       limit: validatedLimit
     });
 
     const responseData = {
-      parties: paginatedTrialBalance,
-      totals: {
-        totalCredit,
-        totalDebit,
-        totalBalance
-      },
+      creditEntries: paginatedCreditEntries,
+      debitEntries: paginatedDebitEntries,
+      creditTotal: totalCredit,
+      debitTotal: totalDebit,
+      balanceDifference: totalBalance,
       pagination: {
         currentPage: validatedPage,
         totalPages: Math.ceil(total / validatedLimit),

@@ -51,8 +51,8 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Check if user is approved
-    if (!user.is_approved) {
+    // Check if user is approved (only if is_approved field exists)
+    if (user.is_approved !== undefined && !user.is_approved) {
       return res.status(403).json({
         success: false,
         message: 'Your account is pending admin approval. Please wait for approval before accessing the application.',
