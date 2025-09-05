@@ -11,6 +11,7 @@
 const { supabase } = require('../config/supabase');
 const { getCache, setCache } = require('../config/redis');
 const admin = require('firebase-admin');
+const User = require('../models/supabase/User');
 
 /**
  * Send success response with consistent format
@@ -621,6 +622,160 @@ const getUserById = async (req, res) => {
   }
 };
 
+/**
+ * Get pending users awaiting approval
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getPendingUsers = async (req, res) => {
+  try {
+    const cacheKey = 'admin:pending-users';
+    const cachedUsers = await getCache(cacheKey);
+    
+    if (cachedUsers) {
+      return sendSuccessResponse(res, cachedUsers, 'Pending users from cache');
+    }
+
+    const pendingUsers = await User.getPendingUsers();
+
+    // Cache for 2 minutes
+    await setCache(cacheKey, pendingUsers, 120);
+
+    sendSuccessResponse(res, pendingUsers, 'Pending users retrieved successfully');
+  } catch (error) {
+    sendErrorResponse(res, 500, 'Failed to retrieve pending users', error);
+  }
+};
+
+/**
+ * Approve a user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const approveUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return sendErrorResponse(res, 400, 'User ID is required');
+    }
+
+    console.log('✅ Starting admin user approval for user:', userId);
+
+    // Get user details before approval
+    const { data: user, error: userFetchError } = await supabase
+      .from('users')
+      .select('id, email, firebase_uid, auth_provider, is_approved')
+      .eq('id', userId)
+      .single();
+
+    if (userFetchError) {
+      console.error('❌ Error fetching user:', userFetchError);
+      return sendErrorResponse(res, 404, 'User not found');
+    }
+
+    if (user.is_approved) {
+      return sendErrorResponse(res, 400, 'User is already approved');
+    }
+
+    console.log('✅ User found for approval:', {
+      id: user.id,
+      email: user.email,
+      firebaseUid: user.firebase_uid,
+      authProvider: user.auth_provider
+    });
+
+    // Approve user in Supabase
+    const approvedUser = await User.approveUser(userId);
+    console.log('✅ User approved in Supabase:', userId);
+
+    // Clear related caches
+    await setCache('admin:users:*', null, 0);
+    await setCache('admin:pending-users', null, 0);
+    await setCache('admin:dashboard:stats', null, 0);
+
+    console.log(`✅ Admin user approval completed: ${user.email} at ${new Date().toISOString()}`);
+
+    sendSuccessResponse(res, { 
+      approvedUserId: userId,
+      approvedUser: approvedUser
+    }, 'User approved successfully');
+  } catch (error) {
+    console.error('❌ Admin user approval error:', error);
+    sendErrorResponse(res, 500, 'Failed to approve user', error);
+  }
+};
+
+/**
+ * Disapprove a user (delete them)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const disapproveUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return sendErrorResponse(res, 400, 'User ID is required');
+    }
+
+    console.log('❌ Starting admin user disapproval for user:', userId);
+
+    // Get user details before disapproval
+    const { data: user, error: userFetchError } = await supabase
+      .from('users')
+      .select('id, email, firebase_uid, auth_provider')
+      .eq('id', userId)
+      .single();
+
+    if (userFetchError) {
+      console.error('❌ Error fetching user:', userFetchError);
+      return sendErrorResponse(res, 404, 'User not found');
+    }
+
+    console.log('✅ User found for disapproval:', {
+      id: user.id,
+      email: user.email,
+      firebaseUid: user.firebase_uid,
+      authProvider: user.auth_provider
+    });
+
+    // Disapprove user (delete them)
+    await User.disapproveUser(userId);
+    console.log('✅ User disapproved (deleted) from Supabase:', userId);
+
+    // Delete Firebase user if it exists
+    try {
+      if (user.firebase_uid) {
+        console.log('🗑️ Deleting Firebase user:', user.firebase_uid);
+        await admin.auth().deleteUser(user.firebase_uid);
+        console.log('✅ Firebase user deleted successfully');
+      } else {
+        console.log('ℹ️ No Firebase UID found, skipping Firebase deletion');
+      }
+    } catch (firebaseError) {
+      console.warn('⚠️ Firebase user deletion failed (continuing):', firebaseError.message);
+      // Continue even if Firebase deletion fails
+    }
+
+    // Clear related caches
+    await setCache('admin:users:*', null, 0);
+    await setCache('admin:pending-users', null, 0);
+    await setCache('admin:dashboard:stats', null, 0);
+
+    console.log(`❌ Admin user disapproval completed: ${user.email} at ${new Date().toISOString()}`);
+
+    sendSuccessResponse(res, { 
+      disapprovedUserId: userId,
+      deletedFromSupabase: true,
+      deletedFromFirebase: !!user.firebase_uid
+    }, 'User disapproved and deleted successfully');
+  } catch (error) {
+    console.error('❌ Admin user disapproval error:', error);
+    sendErrorResponse(res, 500, 'Failed to disapprove user', error);
+  }
+};
+
 module.exports = {
   getDashboardStats,
   getRecentActivity,
@@ -628,5 +783,8 @@ module.exports = {
   getSystemHealth,
   deleteUser,
   resetUserPassword,
-  getUserById
+  getUserById,
+  getPendingUsers,
+  approveUser,
+  disapproveUser
 };

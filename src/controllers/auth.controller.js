@@ -282,6 +282,8 @@ const register = async (req, res) => {
         email_verified: true,
         phone: '',
         password_hash: '',
+        is_approved: false, // New users need admin approval
+        approved_at: null,
         last_login: new Date().toISOString(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -300,6 +302,8 @@ const register = async (req, res) => {
         email_verified: false,
         google_id: null,
         profile_picture: null,
+        is_approved: false, // New users need admin approval
+        approved_at: null,
         last_login: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -326,10 +330,12 @@ const register = async (req, res) => {
         role: 'user',
         googleId: user.google_id,
         profilePicture: user.profile_picture,
-        authProvider: user.auth_provider
+        authProvider: user.auth_provider,
+        isApproved: user.is_approved
       },
-      token
-    }, 'User registered successfully', 201);
+      token,
+      requiresApproval: true
+    }, 'User registered successfully. Your account is pending admin approval.', 201);
 
   } catch (error) {
     // Provide specific error messages
@@ -383,6 +389,15 @@ const googleLogin = async (req, res) => {
       return sendErrorResponse(res, 401, 'User not registered. Please register first before logging in.');
     }
 
+    // Check if user is approved
+    if (!user.is_approved) {
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 403, 'Your account is pending admin approval. Please wait for approval before logging in.', {
+        requiresApproval: true,
+        isApproved: false
+      });
+    }
+
     // Generate token
     const token = generateToken(user.id);
 
@@ -432,6 +447,15 @@ const login = async (req, res) => {
     if (!user) {
       recordLoginAttempt(validatedEmail, false);
       return sendErrorResponse(res, 401, 'Invalid email or password');
+    }
+
+    // Check if user is approved
+    if (!user.is_approved) {
+      recordLoginAttempt(validatedEmail, false);
+      return sendErrorResponse(res, 403, 'Your account is pending admin approval. Please wait for approval before logging in.', {
+        requiresApproval: true,
+        isApproved: false
+      });
     }
 
     // Check if user is Google-only (no password set)

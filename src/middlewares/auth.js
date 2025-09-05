@@ -51,6 +51,15 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // Check if user is approved
+    if (!user.is_approved) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is pending admin approval. Please wait for approval before accessing the application.',
+        requiresApproval: true
+      });
+    }
+
     // Check if user is active (using status field for Supabase)
     if (user.status !== 'active') {
       return res.status(401).json({

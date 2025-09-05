@@ -22,7 +22,10 @@ const {
   getSystemHealth,
   deleteUser,
   resetUserPassword,
-  getUserById
+  getUserById,
+  getPendingUsers,
+  approveUser,
+  disapproveUser
 } = require('../controllers/admin.controller');
 
 // Admin dashboard statistics
@@ -42,6 +45,11 @@ router.get('/users/:userId', getUserById);
 router.delete('/users/:userId', deleteUser);
 router.put('/users/:userId/reset-password', resetUserPassword);
 
+// User approval routes
+router.get('/pending-users', getPendingUsers);
+router.put('/users/:userId/approve', approveUser);
+router.delete('/users/:userId/disapprove', disapproveUser);
+
 // Admin routes info
 router.get('/', (req, res) => {
   res.json({
@@ -54,7 +62,10 @@ router.get('/', (req, res) => {
       health: 'GET /health - System health status',
       getUser: 'GET /users/:userId - Get user details',
       deleteUser: 'DELETE /users/:userId - Delete user',
-      resetPassword: 'PUT /users/:userId/reset-password - Reset user password'
+      resetPassword: 'PUT /users/:userId/reset-password - Reset user password',
+      pendingUsers: 'GET /pending-users - Get users awaiting approval',
+      approveUser: 'PUT /users/:userId/approve - Approve a user',
+      disapproveUser: 'DELETE /users/:userId/disapprove - Disapprove a user'
     },
     timestamp: new Date().toISOString()
   });

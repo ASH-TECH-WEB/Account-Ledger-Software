@@ -143,6 +143,63 @@ class User {
       return false;
     }
   }
+
+  // Method to get pending users (awaiting approval)
+  static async getPendingUsers() {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('is_approved', false)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Method to approve a user
+  static async approveUser(userId) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update({ 
+          is_approved: true,
+          approved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Method to disapprove a user (delete them)
+  static async disapproveUser(userId) {
+    try {
+      // This will delete the user and all their data
+      return await this.delete(userId);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Method to check if user is approved
+  static async isUserApproved(userId) {
+    try {
+      const user = await this.findById(userId);
+      return user && user.is_approved === true;
+    } catch (error) {
+      return false;
+    }
+  }
 }
 
 module.exports = User;
