@@ -469,8 +469,13 @@ const deleteUser = async (req, res) => {
     }
 
     // Clear related caches
-    await setCache('admin:users:*', null, 0); // Clear all user caches
-    await setCache('admin:dashboard:stats', null, 0); // Clear stats cache
+    try {
+      await setCache('admin:dashboard:stats', null, 0); // Clear stats cache
+      // Note: Redis doesn't support wildcard deletion in this way
+      // Individual cache keys should be cleared separately
+    } catch (cacheError) {
+      console.warn('Cache clearing failed:', cacheError);
+    }
 
     console.log(`🗑️ Admin user deletion completed: ${user.email} at ${new Date().toISOString()}`);
 
@@ -564,7 +569,11 @@ const resetUserPassword = async (req, res) => {
     }
 
     // Clear user caches
-    await setCache('admin:users:*', null, 0);
+    try {
+      await setCache('admin:dashboard:stats', null, 0);
+    } catch (cacheError) {
+      console.warn('Cache clearing failed:', cacheError);
+    }
 
     console.log(`🔐 Admin password reset completed for: ${user.email} at ${new Date().toISOString()}`);
 
@@ -700,9 +709,12 @@ const approveUser = async (req, res) => {
     console.log('✅ User approved in Supabase:', userId);
 
     // Clear related caches
-    await setCache('admin:users:*', null, 0);
-    await setCache('admin:pending-users', null, 0);
-    await setCache('admin:dashboard:stats', null, 0);
+    try {
+      await setCache('admin:pending-users', null, 0);
+      await setCache('admin:dashboard:stats', null, 0);
+    } catch (cacheError) {
+      console.warn('Cache clearing failed:', cacheError);
+    }
 
     console.log(`✅ Admin user approval completed: ${user.email} at ${new Date().toISOString()}`);
 
@@ -780,9 +792,12 @@ const disapproveUser = async (req, res) => {
     }
 
     // Clear related caches
-    await setCache('admin:users:*', null, 0);
-    await setCache('admin:pending-users', null, 0);
-    await setCache('admin:dashboard:stats', null, 0);
+    try {
+      await setCache('admin:pending-users', null, 0);
+      await setCache('admin:dashboard:stats', null, 0);
+    } catch (cacheError) {
+      console.warn('Cache clearing failed:', cacheError);
+    }
 
     console.log(`❌ Admin user disapproval completed: ${user.email} at ${new Date().toISOString()}`);
 
