@@ -16,6 +16,7 @@
 const express = require('express');
 const router = express.Router();
 const {
+  getDashboardData,
   getDashboardStats,
   getRecentActivity,
   getAllUsers,
@@ -27,6 +28,9 @@ const {
   approveUser,
   disapproveUser
 } = require('../controllers/admin.controller');
+
+// Batch API - Get all dashboard data in single request
+router.get('/dashboard-data', getDashboardData);
 
 // Admin dashboard statistics
 router.get('/stats', getDashboardStats);

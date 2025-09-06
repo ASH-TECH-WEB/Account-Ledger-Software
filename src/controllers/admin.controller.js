@@ -39,6 +39,281 @@ const sendErrorResponse = (res, statusCode, message, error = null) => {
 };
 
 /**
+ * Get all dashboard data in a single request (BATCH API)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getDashboardData = async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    const { limit = 10 } = req.query;
+    const cacheKey = `admin:dashboard-data:${limit}`;
+    const cachedData = await getCache(cacheKey);
+    
+    if (cachedData) {
+      console.log(`🚀 Dashboard data from cache in ${Date.now() - startTime}ms`);
+      return sendSuccessResponse(res, cachedData, 'Dashboard data from cache');
+    }
+
+    console.log('🔄 Fetching fresh dashboard data from database...');
+
+    // Run all queries in parallel for maximum speed
+    const [
+      statsResult,
+      activityResult,
+      usersResult,
+      healthResult,
+      pendingUsersResult
+    ] = await Promise.allSettled([
+      // Get stats
+      getDashboardStatsData(),
+      
+      // Get activity
+      getRecentActivityData(parseInt(limit)),
+      
+      // Get users (first page only)
+      getAllUsersData(1, 10, ''),
+      
+      // Get health
+      getSystemHealthData(),
+      
+      // Get pending users
+      getPendingUsersData()
+    ]);
+
+    // Process results
+    const stats = statsResult.status === 'fulfilled' ? statsResult.value : {
+      totalUsers: 0, totalParties: 0, totalTransactions: 0,
+      totalRevenue: 0, activeUsers: 0, pendingTransactions: 0
+    };
+
+    const activity = activityResult.status === 'fulfilled' ? activityResult.value : [];
+    const users = usersResult.status === 'fulfilled' ? usersResult.value : { users: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 0 } };
+    const health = healthResult.status === 'fulfilled' ? healthResult.value : { database: 'unknown', api: 'unknown', authentication: 'unknown', fileStorage: 'unknown' };
+    const pendingUsers = pendingUsersResult.status === 'fulfilled' ? pendingUsersResult.value : [];
+
+    const dashboardData = {
+      stats,
+      activity,
+      users,
+      health,
+      pendingUsers
+    };
+
+    // Cache for 5 minutes
+    await setCache(cacheKey, dashboardData, 300);
+
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Dashboard data loaded in ${loadTime}ms`);
+
+    sendSuccessResponse(res, dashboardData, `Dashboard data retrieved successfully in ${loadTime}ms`);
+  } catch (error) {
+    console.error('❌ Dashboard data loading error:', error);
+    sendErrorResponse(res, 500, 'Failed to retrieve dashboard data', error);
+  }
+};
+
+// Helper functions to extract data without response wrapping
+const getDashboardStatsData = async () => {
+  const cacheKey = 'admin:dashboard:stats';
+  const cachedStats = await getCache(cacheKey);
+  
+  if (cachedStats) return cachedStats;
+
+  const [usersResult, partiesResult, transactionsResult, revenueResult, activeUsersResult, pendingTransactionsResult] = await Promise.allSettled([
+    supabase.from('users').select('*', { count: 'exact', head: true }),
+    supabase.from('parties').select('*', { count: 'exact', head: true }),
+    supabase.from('ledger_entries').select('*', { count: 'exact', head: true }),
+    supabase.from('ledger_entries').select('credit').not('credit', 'is', null).limit(10000),
+    supabase.from('users').select('*', { count: 'exact', head: true }).gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+    supabase.from('ledger_entries').select('*', { count: 'exact', head: true }).eq('chk', false)
+  ]);
+
+  const totalUsers = usersResult.status === 'fulfilled' ? (usersResult.value.count || 0) : 0;
+  const totalParties = partiesResult.status === 'fulfilled' ? (partiesResult.value.count || 0) : 0;
+  const totalTransactions = transactionsResult.status === 'fulfilled' ? (transactionsResult.value.count || 0) : 0;
+  const activeUsers = activeUsersResult.status === 'fulfilled' ? (activeUsersResult.value.count || 0) : 0;
+  const pendingTransactions = pendingTransactionsResult.status === 'fulfilled' ? (pendingTransactionsResult.value.count || 0) : 0;
+
+  let totalRevenue = 0;
+  if (revenueResult.status === 'fulfilled' && revenueResult.value.data) {
+    totalRevenue = revenueResult.value.data.reduce((sum, entry) => {
+      const credit = parseFloat(entry.credit);
+      return sum + (isNaN(credit) ? 0 : credit);
+    }, 0);
+  }
+
+  const stats = {
+    totalUsers, totalParties, totalTransactions,
+    totalRevenue: Math.round(totalRevenue * 100) / 100,
+    activeUsers, pendingTransactions
+  };
+
+  await setCache(cacheKey, stats, 600);
+  return stats;
+};
+
+const getRecentActivityData = async (limit) => {
+  const cacheKey = `admin:recent-activity:${limit}`;
+  const cachedActivity = await getCache(cacheKey);
+  
+  if (cachedActivity) return cachedActivity;
+
+  const [entriesResult, partiesResult, usersResult] = await Promise.allSettled([
+    supabase.from('ledger_entries').select('id, party_name, tns_type, credit, debit, created_at, users!inner(name, email)').order('created_at', { ascending: false }).limit(limit),
+    supabase.from('parties').select('id, party_name, created_at, users!inner(name, email)').order('created_at', { ascending: false }).limit(limit),
+    supabase.from('users').select('id, name, email, created_at').order('created_at', { ascending: false }).limit(limit)
+  ]);
+
+  const activities = [];
+
+  if (entriesResult.status === 'fulfilled' && entriesResult.value.data) {
+    entriesResult.value.data.forEach(entry => {
+      activities.push({
+        id: `ledger_${entry.id}`, type: 'transaction',
+        action: `${entry.tns_type} transaction`,
+        details: `${entry.party_name} - ₹${entry.credit || entry.debit || 0}`,
+        user: entry.users?.name || 'Unknown User',
+        userEmail: entry.users?.email || '', timestamp: entry.created_at, status: 'success'
+      });
+    });
+  }
+
+  if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
+    partiesResult.value.data.forEach(party => {
+      activities.push({
+        id: `party_${party.id}`, type: 'party',
+        action: 'New party created', details: party.party_name,
+        user: party.users?.name || 'Unknown User',
+        userEmail: party.users?.email || '', timestamp: party.created_at, status: 'success'
+      });
+    });
+  }
+
+  if (usersResult.status === 'fulfilled' && usersResult.value.data) {
+    usersResult.value.data.forEach(user => {
+      activities.push({
+        id: `user_${user.id}`, type: 'user',
+        action: 'User registered', details: user.email,
+        user: user.name || 'New User', userEmail: user.email,
+        timestamp: user.created_at, status: 'info'
+      });
+    });
+  }
+
+  activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const limitedActivities = activities.slice(0, limit);
+
+  await setCache(cacheKey, limitedActivities, 300);
+  return limitedActivities;
+};
+
+const getAllUsersData = async (page, limit, search) => {
+  const offset = (parseInt(page) - 1) * parseInt(limit);
+  const cacheKey = `admin:users:${page}:${limit}:${search}`;
+  const cachedUsers = await getCache(cacheKey);
+  
+  if (cachedUsers) return cachedUsers;
+
+  let query = supabase.from('users').select('id, name, email, phone, city, state, is_approved, approved_at, auth_provider, google_id, profile_picture, email_verified, firebase_uid, last_login, status, company_account, created_at, updated_at').order('created_at', { ascending: false });
+
+  if (search) {
+    query = query.or(`name.ilike.%${search}%,email.ilike.%${search}%`);
+  }
+
+  query = query.range(offset, offset + parseInt(limit) - 1);
+  const { data: users, error: usersError, count } = await query;
+
+  if (usersError) throw usersError;
+
+  const userIds = users.map(user => user.id);
+  const [partiesResult, transactionsResult] = await Promise.allSettled([
+    supabase.from('parties').select('user_id').in('user_id', userIds),
+    supabase.from('ledger_entries').select('user_id').in('user_id', userIds)
+  ]);
+
+  const partyCounts = {};
+  const transactionCounts = {};
+
+  if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
+    partiesResult.value.data.forEach(party => {
+      partyCounts[party.user_id] = (partyCounts[party.user_id] || 0) + 1;
+    });
+  }
+
+  if (transactionsResult.status === 'fulfilled' && transactionsResult.value.data) {
+    transactionsResult.value.data.forEach(transaction => {
+      transactionCounts[transaction.user_id] = (transactionCounts[transaction.user_id] || 0) + 1;
+    });
+  }
+
+  const userStats = users.map(user => ({
+    ...user,
+    partyCount: partyCounts[user.id] || 0,
+    transactionCount: transactionCounts[user.id] || 0
+  }));
+
+  const result = {
+    users: userStats,
+    pagination: {
+      page: parseInt(page), limit: parseInt(limit),
+      total: count || 0, totalPages: Math.ceil((count || 0) / parseInt(limit))
+    }
+  };
+
+  await setCache(cacheKey, result, 600);
+  return result;
+};
+
+const getSystemHealthData = async () => {
+  const cacheKey = 'admin:system-health';
+  const cachedHealth = await getCache(cacheKey);
+  
+  if (cachedHealth) return cachedHealth;
+
+  const health = { database: 'online', api: 'healthy', authentication: 'active', fileStorage: 'warning', cache: 'unknown' };
+
+  const [dbResult, cacheResult] = await Promise.allSettled([
+    supabase.from('users').select('count').limit(1),
+    getCache('health:test')
+  ]);
+
+  if (dbResult.status === 'fulfilled' && !dbResult.value.error) {
+    health.database = 'online';
+  } else {
+    health.database = 'error';
+  }
+
+  if (cacheResult.status === 'fulfilled') {
+    health.cache = 'online';
+  } else {
+    health.cache = 'offline';
+  }
+
+  await setCache(cacheKey, health, 120);
+  return health;
+};
+
+const getPendingUsersData = async () => {
+  const cacheKey = 'admin:pending-users';
+  const cachedPendingUsers = await getCache(cacheKey);
+  
+  if (cachedPendingUsers) return cachedPendingUsers;
+
+  const { data: pendingUsers, error } = await supabase
+    .from('users')
+    .select('id, name, email, phone, city, state, created_at, updated_at')
+    .eq('is_approved', false)
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  await setCache(cacheKey, pendingUsers || [], 300);
+  return pendingUsers || [];
+};
+
+/**
  * Get admin dashboard statistics
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
