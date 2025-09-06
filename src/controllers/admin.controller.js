@@ -44,78 +44,97 @@ const sendErrorResponse = (res, statusCode, message, error = null) => {
  * @param {Object} res - Express response object
  */
 const getDashboardStats = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const cacheKey = 'admin:dashboard:stats';
     const cachedStats = await getCache(cacheKey);
     
     if (cachedStats) {
+      console.log(`📊 Stats from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedStats, 'Dashboard stats from cache');
     }
 
-    // Get total users count
-    const { count: totalUsers, error: usersError } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true });
+    console.log('🔄 Fetching fresh stats from database...');
 
-    if (usersError) throw usersError;
+    // Run all queries in parallel for maximum speed
+    const [
+      usersResult,
+      partiesResult,
+      transactionsResult,
+      revenueResult,
+      activeUsersResult,
+      pendingTransactionsResult
+    ] = await Promise.allSettled([
+      // Total users count
+      supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true }),
+      
+      // Total parties count
+      supabase
+        .from('parties')
+        .select('*', { count: 'exact', head: true }),
+      
+      // Total ledger entries count
+      supabase
+        .from('ledger_entries')
+        .select('*', { count: 'exact', head: true }),
+      
+      // Total revenue (sum of all credit amounts) - optimized query
+      supabase
+        .from('ledger_entries')
+        .select('credit')
+        .not('credit', 'is', null)
+        .limit(10000), // Limit to prevent huge data transfer
+      
+      // Active users (last 7 days)
+      supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .gte('updated_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
+      
+      // Pending transactions
+      supabase
+        .from('ledger_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('chk', false)
+    ]);
 
-    // Get total parties count
-    const { count: totalParties, error: partiesError } = await supabase
-      .from('parties')
-      .select('*', { count: 'exact', head: true });
+    // Process results with error handling
+    const totalUsers = usersResult.status === 'fulfilled' ? (usersResult.value.count || 0) : 0;
+    const totalParties = partiesResult.status === 'fulfilled' ? (partiesResult.value.count || 0) : 0;
+    const totalTransactions = transactionsResult.status === 'fulfilled' ? (transactionsResult.value.count || 0) : 0;
+    const activeUsers = activeUsersResult.status === 'fulfilled' ? (activeUsersResult.value.count || 0) : 0;
+    const pendingTransactions = pendingTransactionsResult.status === 'fulfilled' ? (pendingTransactionsResult.value.count || 0) : 0;
 
-    if (partiesError) throw partiesError;
-
-    // Get total ledger entries count
-    const { count: totalTransactions, error: transactionsError } = await supabase
-      .from('ledger_entries')
-      .select('*', { count: 'exact', head: true });
-
-    if (transactionsError) throw transactionsError;
-
-    // Get total revenue (sum of all credit amounts)
-    const { data: revenueData, error: revenueError } = await supabase
-      .from('ledger_entries')
-      .select('credit')
-      .not('credit', 'is', null);
-
-    if (revenueError) throw revenueError;
-
-    const totalRevenue = revenueData?.reduce((sum, entry) => sum + (parseFloat(entry.credit) || 0), 0) || 0;
-
-    // Get active users (users who logged in within last 7 days)
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-    const { count: activeUsers, error: activeUsersError } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true })
-      .gte('updated_at', sevenDaysAgo.toISOString());
-
-    if (activeUsersError) throw activeUsersError;
-
-    // Get pending transactions (transactions with chk = false)
-    const { count: pendingTransactions, error: pendingError } = await supabase
-      .from('ledger_entries')
-      .select('*', { count: 'exact', head: true })
-      .eq('chk', false);
-
-    if (pendingError) throw pendingError;
+    // Calculate revenue efficiently
+    let totalRevenue = 0;
+    if (revenueResult.status === 'fulfilled' && revenueResult.value.data) {
+      totalRevenue = revenueResult.value.data.reduce((sum, entry) => {
+        const credit = parseFloat(entry.credit);
+        return sum + (isNaN(credit) ? 0 : credit);
+      }, 0);
+    }
 
     const stats = {
-      totalUsers: totalUsers || 0,
-      totalParties: totalParties || 0,
-      totalTransactions: totalTransactions || 0,
-      totalRevenue: Math.round(totalRevenue * 100) / 100, // Round to 2 decimal places
-      activeUsers: activeUsers || 0,
-      pendingTransactions: pendingTransactions || 0
+      totalUsers,
+      totalParties,
+      totalTransactions,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      activeUsers,
+      pendingTransactions
     };
 
-    // Cache for 5 minutes
-    await setCache(cacheKey, stats, 300);
+    // Cache for 10 minutes (increased cache time)
+    await setCache(cacheKey, stats, 600);
 
-    sendSuccessResponse(res, stats, 'Dashboard statistics retrieved successfully');
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Stats loaded in ${loadTime}ms`);
+
+    sendSuccessResponse(res, stats, `Dashboard statistics retrieved successfully in ${loadTime}ms`);
   } catch (error) {
+    console.error('❌ Stats loading error:', error);
     sendErrorResponse(res, 500, 'Failed to retrieve dashboard statistics', error);
   }
 };
@@ -126,109 +145,104 @@ const getDashboardStats = async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getRecentActivity = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { limit = 10 } = req.query;
     const cacheKey = `admin:recent-activity:${limit}`;
     const cachedActivity = await getCache(cacheKey);
     
     if (cachedActivity) {
+      console.log(`📈 Activity from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedActivity, 'Recent activity from cache');
     }
 
-    // Get recent ledger entries with user info
-    const { data: recentEntries, error: entriesError } = await supabase
-      .from('ledger_entries')
-      .select(`
-        id,
-        party_name,
-        tns_type,
-        credit,
-        debit,
-        created_at,
-        users!inner(name, email)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
+    console.log('🔄 Fetching fresh activity from database...');
 
-    if (entriesError) throw entriesError;
+    // Run all queries in parallel for maximum speed
+    const [entriesResult, partiesResult, usersResult] = await Promise.allSettled([
+      supabase
+        .from('ledger_entries')
+        .select('id, party_name, tns_type, credit, debit, created_at, users!inner(name, email)')
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit)),
+      
+      supabase
+        .from('parties')
+        .select('id, party_name, created_at, users!inner(name, email)')
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit)),
+      
+      supabase
+        .from('users')
+        .select('id, name, email, created_at')
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit))
+    ]);
 
-    // Get recent party creations
-    const { data: recentParties, error: partiesError } = await supabase
-      .from('parties')
-      .select(`
-        id,
-        party_name,
-        created_at,
-        users!inner(name, email)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
-
-    if (partiesError) throw partiesError;
-
-    // Get recent user registrations
-    const { data: recentUsers, error: usersError } = await supabase
-      .from('users')
-      .select('id, name, email, created_at')
-      .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
-
-    if (usersError) throw usersError;
-
-    // Combine and format activities
     const activities = [];
 
-    // Add ledger entries activities
-    recentEntries?.forEach(entry => {
-      activities.push({
-        id: `ledger_${entry.id}`,
-        type: 'transaction',
-        action: `${entry.tns_type} transaction`,
-        details: `${entry.party_name} - ₹${entry.credit || entry.debit || 0}`,
-        user: entry.users?.name || 'Unknown User',
-        userEmail: entry.users?.email || '',
-        timestamp: entry.created_at,
-        status: 'success'
+    // Process ledger entries
+    if (entriesResult.status === 'fulfilled' && entriesResult.value.data) {
+      entriesResult.value.data.forEach(entry => {
+        activities.push({
+          id: `ledger_${entry.id}`,
+          type: 'transaction',
+          action: `${entry.tns_type} transaction`,
+          details: `${entry.party_name} - ₹${entry.credit || entry.debit || 0}`,
+          user: entry.users?.name || 'Unknown User',
+          userEmail: entry.users?.email || '',
+          timestamp: entry.created_at,
+          status: 'success'
+        });
       });
-    });
+    }
 
-    // Add party creation activities
-    recentParties?.forEach(party => {
-      activities.push({
-        id: `party_${party.id}`,
-        type: 'party',
-        action: 'New party created',
-        details: party.party_name,
-        user: party.users?.name || 'Unknown User',
-        userEmail: party.users?.email || '',
-        timestamp: party.created_at,
-        status: 'success'
+    // Process parties
+    if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
+      partiesResult.value.data.forEach(party => {
+        activities.push({
+          id: `party_${party.id}`,
+          type: 'party',
+          action: 'New party created',
+          details: party.party_name,
+          user: party.users?.name || 'Unknown User',
+          userEmail: party.users?.email || '',
+          timestamp: party.created_at,
+          status: 'success'
+        });
       });
-    });
+    }
 
-    // Add user registration activities
-    recentUsers?.forEach(user => {
-      activities.push({
-        id: `user_${user.id}`,
-        type: 'user',
-        action: 'User registered',
-        details: user.email,
-        user: user.name || 'New User',
-        userEmail: user.email,
-        timestamp: user.created_at,
-        status: 'info'
+    // Process users
+    if (usersResult.status === 'fulfilled' && usersResult.value.data) {
+      usersResult.value.data.forEach(user => {
+        activities.push({
+          id: `user_${user.id}`,
+          type: 'user',
+          action: 'User registered',
+          details: user.email,
+          user: user.name || 'New User',
+          userEmail: user.email,
+          timestamp: user.created_at,
+          status: 'info'
+        });
       });
-    });
+    }
 
     // Sort by timestamp and limit
     activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
     const limitedActivities = activities.slice(0, parseInt(limit));
 
-    // Cache for 2 minutes
-    await setCache(cacheKey, limitedActivities, 120);
+    // Cache for 5 minutes (increased cache time)
+    await setCache(cacheKey, limitedActivities, 300);
 
-    sendSuccessResponse(res, limitedActivities, 'Recent activity retrieved successfully');
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Activity loaded in ${loadTime}ms`);
+
+    sendSuccessResponse(res, limitedActivities, `Recent activity retrieved successfully in ${loadTime}ms`);
   } catch (error) {
+    console.error('❌ Activity loading error:', error);
     sendErrorResponse(res, 500, 'Failed to retrieve recent activity', error);
   }
 };
@@ -239,6 +253,8 @@ const getRecentActivity = async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getAllUsers = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const { page = 1, limit = 20, search = '' } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -247,8 +263,11 @@ const getAllUsers = async (req, res) => {
     const cachedUsers = await getCache(cacheKey);
     
     if (cachedUsers) {
+      console.log(`👥 Users from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedUsers, 'Users from cache');
     }
+
+    console.log('🔄 Fetching fresh users from database...');
 
     let query = supabase
       .from('users')
@@ -286,28 +305,45 @@ const getAllUsers = async (req, res) => {
 
     if (usersError) throw usersError;
 
-    // Get user statistics
-    const userStats = await Promise.all(
-      users.map(async (user) => {
-        // Get party count for this user
-        const { count: partyCount } = await supabase
-          .from('parties')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
+    // Optimize: Get all user stats in parallel instead of sequential
+    const userIds = users.map(user => user.id);
+    
+    const [partiesResult, transactionsResult] = await Promise.allSettled([
+      // Get party counts for all users at once
+      supabase
+        .from('parties')
+        .select('user_id')
+        .in('user_id', userIds),
+      
+      // Get transaction counts for all users at once
+      supabase
+        .from('ledger_entries')
+        .select('user_id')
+        .in('user_id', userIds)
+    ]);
 
-        // Get transaction count for this user
-        const { count: transactionCount } = await supabase
-          .from('ledger_entries')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id);
+    // Process results efficiently
+    const partyCounts = {};
+    const transactionCounts = {};
 
-        return {
-          ...user,
-          partyCount: partyCount || 0,
-          transactionCount: transactionCount || 0
-        };
-      })
-    );
+    if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
+      partiesResult.value.data.forEach(party => {
+        partyCounts[party.user_id] = (partyCounts[party.user_id] || 0) + 1;
+      });
+    }
+
+    if (transactionsResult.status === 'fulfilled' && transactionsResult.value.data) {
+      transactionsResult.value.data.forEach(transaction => {
+        transactionCounts[transaction.user_id] = (transactionCounts[transaction.user_id] || 0) + 1;
+      });
+    }
+
+    // Map user stats efficiently
+    const userStats = users.map(user => ({
+      ...user,
+      partyCount: partyCounts[user.id] || 0,
+      transactionCount: transactionCounts[user.id] || 0
+    }));
 
     const result = {
       users: userStats,
@@ -319,11 +355,15 @@ const getAllUsers = async (req, res) => {
       }
     };
 
-    // Cache for 5 minutes
-    await setCache(cacheKey, result, 300);
+    // Cache for 10 minutes (increased cache time)
+    await setCache(cacheKey, result, 600);
 
-    sendSuccessResponse(res, result, 'Users retrieved successfully');
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Users loaded in ${loadTime}ms`);
+
+    sendSuccessResponse(res, result, `Users retrieved successfully in ${loadTime}ms`);
   } catch (error) {
+    console.error('❌ Users loading error:', error);
     sendErrorResponse(res, 500, 'Failed to retrieve users', error);
   }
 };
@@ -334,38 +374,62 @@ const getAllUsers = async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getSystemHealth = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
+    const cacheKey = 'admin:system-health';
+    const cachedHealth = await getCache(cacheKey);
+    
+    if (cachedHealth) {
+      console.log(`🏥 Health from cache in ${Date.now() - startTime}ms`);
+      return sendSuccessResponse(res, cachedHealth, 'System health from cache');
+    }
+
+    console.log('🔄 Checking system health...');
+
     const health = {
       database: 'online',
       api: 'healthy',
       authentication: 'active',
-      fileStorage: 'warning'
+      fileStorage: 'warning',
+      cache: 'unknown'
     };
 
-    // Test database connection
-    try {
-      const { error } = await supabase
+    // Test all connections in parallel
+    const [dbResult, cacheResult] = await Promise.allSettled([
+      // Test database connection
+      supabase
         .from('users')
         .select('count')
-        .limit(1);
+        .limit(1),
       
-      if (error) {
-        health.database = 'error';
-      }
-    } catch (error) {
+      // Test Redis connection
+      getCache('health:test')
+    ]);
+
+    // Process database result
+    if (dbResult.status === 'fulfilled' && !dbResult.value.error) {
+      health.database = 'online';
+    } else {
       health.database = 'error';
     }
 
-    // Test Redis connection
-    try {
-      await getCache('health:test');
+    // Process cache result
+    if (cacheResult.status === 'fulfilled') {
       health.cache = 'online';
-    } catch (error) {
+    } else {
       health.cache = 'offline';
     }
 
-    sendSuccessResponse(res, health, 'System health retrieved successfully');
+    // Cache for 2 minutes
+    await setCache(cacheKey, health, 120);
+
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Health checked in ${loadTime}ms`);
+
+    sendSuccessResponse(res, health, `System health retrieved successfully in ${loadTime}ms`);
   } catch (error) {
+    console.error('❌ Health check error:', error);
     sendErrorResponse(res, 500, 'Failed to retrieve system health', error);
   }
 };
