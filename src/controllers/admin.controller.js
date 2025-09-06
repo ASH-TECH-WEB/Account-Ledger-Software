@@ -1152,6 +1152,7 @@ const disapproveUser = async (req, res) => {
 };
 
 module.exports = {
+  getDashboardData,
   getDashboardStats,
   getRecentActivity,
   getAllUsers,
