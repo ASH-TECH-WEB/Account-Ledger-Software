@@ -310,8 +310,8 @@ const getFinalTrialBalance = async (req, res) => {
       return isVirtualParty || validPartyNames.has(partyName);
     });
     
-    // Process entries to get individual transactions for trial balance
-    const partyTransactions = new Map(); // Use Map to group by party name
+    // Process entries to calculate party closing balances
+    const partyBalances = new Map(); // Use Map to group by party name
 
     validEntries.forEach(entry => {
       const partyName = entry.party_name;
@@ -346,13 +346,13 @@ const getFinalTrialBalance = async (req, res) => {
         displayName = 'Comp';
       }
       
-      // Get or create party transaction entry
-      if (!partyTransactions.has(displayName)) {
-        partyTransactions.set(displayName, {
+      // Get or create party balance entry
+      if (!partyBalances.has(displayName)) {
+        partyBalances.set(displayName, {
           name: displayName,
           creditTotal: 0,
           debitTotal: 0,
-          balance: 0,
+          closingBalance: 0,
           entryCount: 0,
           remarks: '',
           date: entry.date,
@@ -360,7 +360,7 @@ const getFinalTrialBalance = async (req, res) => {
         });
       }
       
-      const partyEntry = partyTransactions.get(displayName);
+      const partyEntry = partyBalances.get(displayName);
       partyEntry.entryCount++;
       
       // Add credit amount
@@ -373,39 +373,38 @@ const getFinalTrialBalance = async (req, res) => {
         partyEntry.debitTotal += debit;
       }
       
-      // Update balance
-      partyEntry.balance = partyEntry.creditTotal - partyEntry.debitTotal;
+      // Update closing balance (Credit - Debit)
+      partyEntry.closingBalance = partyEntry.creditTotal - partyEntry.debitTotal;
     });
     
-    // Convert Map to array for traditional trial balance
-    const allParties = Array.from(partyTransactions.values())
-      .filter(party => party.creditTotal > 0 || party.debitTotal > 0); // Only show parties with transactions
+    // Convert Map to array and filter parties with non-zero closing balance
+    const allParties = Array.from(partyBalances.values())
+      .filter(party => party.closingBalance !== 0); // Only show parties with non-zero closing balance
     
-    // Create traditional trial balance entries
+    // Create trial balance entries based on closing balance
     const creditEntries = [];
     const debitEntries = [];
     
     allParties.forEach(party => {
-      // Add credit entry if party has credit amount
-      if (party.creditTotal > 0) {
+      // If closing balance is positive (credit), add to credit side
+      if (party.closingBalance > 0) {
         creditEntries.push({
           id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-credit`,
           name: party.name,
-          amount: party.creditTotal,
+          amount: party.closingBalance,
           type: 'credit',
-          remarks: `Credit Total for ${party.name}`,
+          remarks: `Closing Balance for ${party.name}`,
           date: party.date
         });
       }
-      
-      // Add debit entry if party has debit amount
-      if (party.debitTotal > 0) {
+      // If closing balance is negative (debit), add to debit side
+      else if (party.closingBalance < 0) {
         debitEntries.push({
           id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-debit`,
           name: party.name,
-          amount: party.debitTotal,
+          amount: Math.abs(party.closingBalance), // Make positive for debit side
           type: 'debit',
-          remarks: `Debit Total for ${party.name}`,
+          remarks: `Closing Balance for ${party.name}`,
           date: party.date
         });
       }
@@ -710,8 +709,8 @@ const forceRefreshTrialBalance = async (req, res) => {
       return isVirtualParty || validPartyNames.has(partyName);
     });
 
-    // Process entries to get individual transactions for trial balance
-    const partyTransactions = new Map();
+    // Process entries to calculate party closing balances
+    const partyBalances = new Map();
 
     validEntries.forEach(entry => {
       const partyName = entry.party_name;
@@ -739,13 +738,13 @@ const forceRefreshTrialBalance = async (req, res) => {
         displayName = 'Comp';
       }
       
-      // Get or create party transaction entry
-      if (!partyTransactions.has(displayName)) {
-        partyTransactions.set(displayName, {
+      // Get or create party balance entry
+      if (!partyBalances.has(displayName)) {
+        partyBalances.set(displayName, {
           name: displayName,
           creditTotal: 0,
           debitTotal: 0,
-          balance: 0,
+          closingBalance: 0,
           entryCount: 0,
           remarks: '',
           date: entry.date,
@@ -753,7 +752,7 @@ const forceRefreshTrialBalance = async (req, res) => {
         });
       }
       
-      const partyEntry = partyTransactions.get(displayName);
+      const partyEntry = partyBalances.get(displayName);
       partyEntry.entryCount++;
       
       // Add credit amount
@@ -766,31 +765,63 @@ const forceRefreshTrialBalance = async (req, res) => {
         partyEntry.debitTotal += debit;
       }
       
-      // Update balance
-      partyEntry.balance = partyEntry.creditTotal - partyEntry.debitTotal;
+      // Update closing balance (Credit - Debit)
+      partyEntry.closingBalance = partyEntry.creditTotal - partyEntry.debitTotal;
     });
     
-    // Convert Map to array for trial balance
-    const trialBalance = Array.from(partyTransactions.values())
-      .filter(party => party.creditTotal > 0 || party.debitTotal > 0);
-
-    // Calculate totals efficiently
-    const totalCredit = trialBalance.reduce((sum, party) => sum + party.creditTotal, 0);
-    const totalDebit = trialBalance.reduce((sum, party) => sum + party.debitTotal, 0);
+    // Convert Map to array and filter parties with non-zero closing balance
+    const allParties = Array.from(partyBalances.values())
+      .filter(party => party.closingBalance !== 0);
+    
+    // Create trial balance entries based on closing balance
+    const creditEntries = [];
+    const debitEntries = [];
+    
+    allParties.forEach(party => {
+      // If closing balance is positive (credit), add to credit side
+      if (party.closingBalance > 0) {
+        creditEntries.push({
+          id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-credit`,
+          name: party.name,
+          amount: party.closingBalance,
+          type: 'credit',
+          remarks: `Closing Balance for ${party.name}`,
+          date: party.date
+        });
+      }
+      // If closing balance is negative (debit), add to debit side
+      else if (party.closingBalance < 0) {
+        debitEntries.push({
+          id: `${party.name.toLowerCase().replace(/\s+/g, '-')}-debit`,
+          name: party.name,
+          amount: Math.abs(party.closingBalance), // Make positive for debit side
+          type: 'debit',
+          remarks: `Closing Balance for ${party.name}`,
+          date: party.date
+        });
+      }
+    });
+    
+    // Sort entries by amount (largest first) for better readability
+    creditEntries.sort((a, b) => b.amount - a.amount);
+    debitEntries.sort((a, b) => b.amount - a.amount);
+    
+    // Calculate totals from actual entries
+    const totalCredit = creditEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const totalDebit = debitEntries.reduce((sum, entry) => sum + entry.amount, 0);
     const totalBalance = totalCredit - totalDebit;
 
     const responseData = {
-      parties: trialBalance,
-      totals: {
-        totalCredit,
-        totalDebit,
-        totalBalance
-      },
+      creditEntries,
+      debitEntries,
+      creditTotal: totalCredit,
+      debitTotal: totalDebit,
+      balanceDifference: totalBalance,
       pagination: {
         currentPage: 1,
         totalPages: 1,
-        totalItems: trialBalance.length,
-        itemsPerPage: trialBalance.length
+        totalItems: allParties.length,
+        itemsPerPage: allParties.length
       },
       metadata: {
         calculationTime: `${Date.now() - startTime}ms`,
