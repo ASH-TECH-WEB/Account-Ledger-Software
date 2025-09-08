@@ -1,4 +1,5 @@
 const UserSettings = require('../models/supabase/UserSettings');
+const Party = require('../models/supabase/Party');
 
 // Get user settings
 const getUserSettings = async (req, res) => {
@@ -80,6 +81,7 @@ const updateUserSettings = async (req, res) => {
     }
 
     let settings = await UserSettings.findByUserId(requestedUserId);
+    const oldCompanyName = settings?.company_account;
     
     if (!settings) {
       // Create settings if they don't exist
@@ -87,6 +89,47 @@ const updateUserSettings = async (req, res) => {
     } else {
       // Update existing settings
       settings = await UserSettings.update(requestedUserId, updateData);
+    }
+
+    // Auto-create company party if company name changed
+    if (updateData.company_account && updateData.company_account !== oldCompanyName) {
+      try {
+        console.log(`🏢 Company name changed from "${oldCompanyName}" to "${updateData.company_account}"`);
+        
+        // Check if company party already exists
+        const existingParties = await Party.findByUserId(requestedUserId);
+        const companyPartyExists = existingParties?.some(party => 
+          party.party_name === updateData.company_account
+        );
+        
+        if (!companyPartyExists) {
+          // Create new company party
+          const companyPartyData = {
+            user_id: requestedUserId,
+            party_name: updateData.company_account,
+            sr_no: `COMP_${Date.now()}`,
+            status: 'A', // Active
+            commi_system: 'Give', // Company gives commission
+            balance_limit: '0',
+            m_commission: 'With Commission',
+            rate: '1',
+            monday_final: 'No',
+            address: '',
+            phone: '',
+            email: '',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+          
+          const newCompanyParty = await Party.create(companyPartyData);
+          console.log(`✅ Company party created: ${updateData.company_account} (ID: ${newCompanyParty.id})`);
+        } else {
+          console.log(`ℹ️ Company party already exists: ${updateData.company_account}`);
+        }
+      } catch (partyError) {
+        console.error('❌ Error creating company party:', partyError);
+        // Don't fail the settings update if party creation fails
+      }
     }
 
     res.json({
