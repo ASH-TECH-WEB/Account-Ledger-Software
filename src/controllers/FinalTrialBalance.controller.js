@@ -375,6 +375,19 @@ const getFinalTrialBalance = async (req, res) => {
       
       // Update closing balance (Credit - Debit)
       partyEntry.closingBalance = partyEntry.creditTotal - partyEntry.debitTotal;
+      
+      // Debug logging for specific parties
+      if (displayName === 'Take' || displayName === 'Give') {
+        console.log(`🔍 Debug ${displayName}:`, {
+          partyName,
+          credit,
+          debit,
+          remarks,
+          creditTotal: partyEntry.creditTotal,
+          debitTotal: partyEntry.debitTotal,
+          closingBalance: partyEntry.closingBalance
+        });
+      }
     });
     
     // Convert Map to array and filter parties with non-zero closing balance
