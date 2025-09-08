@@ -292,17 +292,13 @@ const getFinalTrialBalance = async (req, res) => {
     const validParties = await Party.findByUserId(userId);
     const validPartyNames = new Set(validParties.map(party => party.party_name));
     
-    // Filter entries to only include valid parties (excluding virtual parties)
+    // Filter entries to only include valid parties (including real company parties)
     const validEntries = entries.filter(entry => {
       const partyName = entry.party_name;
       const remarks = entry.remarks || '';
       
-      // Allow virtual parties (Commission, AQC, Company Account)
+      // Allow virtual parties (Commission only)
       const isVirtualParty = partyName.toLowerCase().includes('commission') ||
-                            partyName.toLowerCase().includes('aqc') ||
-                            partyName.toLowerCase().includes('company') ||
-                            partyName.toLowerCase().includes('comp') ||
-                            partyName.toLowerCase().includes('auto-calculated') ||
                             remarks.toLowerCase().includes('commission') ||
                             remarks.toLowerCase().includes('auto-calculated');
       
@@ -709,17 +705,13 @@ const forceRefreshTrialBalance = async (req, res) => {
     const validParties = await Party.findByUserId(userId);
     const validPartyNames = new Set(validParties.map(party => party.party_name));
     
-    // Filter entries to only include valid parties (excluding virtual parties)
+    // Filter entries to only include valid parties (including real company parties)
     const validEntries = entries.filter(entry => {
       const partyName = entry.party_name;
       const remarks = entry.remarks || '';
       
-      // Allow virtual parties (Commission, AQC, Company Account)
+      // Allow virtual parties (Commission only)
       const isVirtualParty = partyName.toLowerCase().includes('commission') ||
-                            partyName.toLowerCase().includes('aqc') ||
-                            partyName.toLowerCase().includes('company') ||
-                            partyName.toLowerCase().includes('comp') ||
-                            partyName.toLowerCase().includes('auto-calculated') ||
                             remarks.toLowerCase().includes('commission') ||
                             remarks.toLowerCase().includes('auto-calculated');
       
