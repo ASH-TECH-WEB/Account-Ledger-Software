@@ -320,7 +320,7 @@ const getFinalTrialBalance = async (req, res) => {
       const remarks = entry.remarks || '';
       
       // Skip Monday Final Settlement entries for trial balance
-      if (remarks.includes('Monday Final Settlement')) {
+      if (remarks.includes('Monday Final Settlement') || remarks.includes('Monday Settlement')) {
         return; // Skip this entry
       }
       
@@ -730,6 +730,11 @@ const forceRefreshTrialBalance = async (req, res) => {
       const credit = Number(entry.credit) || 0;
       const debit = Number(entry.debit) || 0;
       const remarks = entry.remarks || '';
+      
+      // Skip Monday Final Settlement entries for trial balance
+      if (remarks.includes('Monday Final Settlement') || remarks.includes('Monday Settlement')) {
+        return; // Skip this entry
+      }
       
       // Check if this is a commission transaction
       const isCommission = remarks.toLowerCase().includes('commission') || 
