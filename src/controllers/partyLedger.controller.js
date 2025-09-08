@@ -969,8 +969,8 @@ const updateMondayFinal = async (req, res) => {
               settlementRemarks += ` (including ${existingMondayFinals.length} previous Monday Final entries)`;
             }
             
-            // Settlement entry should show the settlement amount in balance
-            // This represents the total amount that was settled (always positive)
+            // Settlement entry should show the net settlement amount in balance
+            // This represents the actual settlement amount (positive for credit, negative for debit)
             const settlementEntry = {
               user_id: userId,
               party_name: partyName,
@@ -979,7 +979,7 @@ const updateMondayFinal = async (req, res) => {
               tns_type: settlementType,
               debit: settlementType === 'DR' ? settlementAmount : 0,
               credit: settlementType === 'CR' ? settlementAmount : 0,
-              balance: settlementAmount, // Show settlement amount in balance (always positive)
+              balance: netSettlementAmount, // Show net settlement amount (positive/negative)
               chk: false,
               ti: mondayFinalId,
               is_old_record: false,
