@@ -969,8 +969,8 @@ const updateMondayFinal = async (req, res) => {
               settlementRemarks += ` (including ${existingMondayFinals.length} previous Monday Final entries)`;
             }
             
-            // Settlement entry should NOT change the balance - it's just a record
-            // The balance should remain the same as before settlement
+            // Settlement entry should show the net settlement amount in balance
+            // This represents the total amount that was settled
             const settlementEntry = {
               user_id: userId,
               party_name: partyName,
@@ -979,7 +979,7 @@ const updateMondayFinal = async (req, res) => {
               tns_type: settlementType,
               debit: settlementType === 'DR' ? settlementAmount : 0,
               credit: settlementType === 'CR' ? settlementAmount : 0,
-              balance: 0, // No balance change - just a settlement record
+              balance: netSettlementAmount, // Show net settlement amount in balance
               chk: false,
               ti: mondayFinalId,
               is_old_record: false,
