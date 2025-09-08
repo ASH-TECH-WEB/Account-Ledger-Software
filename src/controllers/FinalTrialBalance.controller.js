@@ -324,6 +324,11 @@ const getFinalTrialBalance = async (req, res) => {
         return; // Skip this entry
       }
       
+      // Skip company name transactions (same as Account Ledger logic)
+      if (remarks === userCompanyName || remarks === 'Commission') {
+        return; // Skip this entry
+      }
+      
       // Processing transaction
       
       // Check if this is a commission transaction
@@ -733,6 +738,11 @@ const forceRefreshTrialBalance = async (req, res) => {
       
       // Skip Monday Final Settlement entries for trial balance
       if (remarks.includes('Monday Final Settlement') || remarks.includes('Monday Settlement')) {
+        return; // Skip this entry
+      }
+      
+      // Skip company name transactions (same as Account Ledger logic)
+      if (remarks === userCompanyName || remarks === 'Commission') {
         return; // Skip this entry
       }
       
