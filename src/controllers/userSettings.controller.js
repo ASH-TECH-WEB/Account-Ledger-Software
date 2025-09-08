@@ -1,5 +1,4 @@
 const UserSettings = require('../models/supabase/UserSettings');
-const Party = require('../models/supabase/Party');
 
 // Get user settings
 const getUserSettings = async (req, res) => {
@@ -52,64 +51,6 @@ const createUserSettings = async (req, res) => {
 
     const settings = await UserSettings.create(settingsData);
 
-    // Check if company name is being set and create corresponding party
-    if (settingsData.companyName && settingsData.companyName.trim()) {
-      try {
-        // Check if a party with this company name already exists for this user
-        const existingParties = await Party.findByUserId(userId);
-        const existingCompanyParty = existingParties.find(p => 
-          p.party_name === settingsData.companyName.trim() && p.user_id === userId
-        );
-
-        if (!existingCompanyParty) {
-          // Get next SR number for the user
-          const allParties = await Party.findByUserId(userId);
-          let nextSrNo = '001';
-          
-          if (allParties && allParties.length > 0) {
-            const sortedParties = allParties.sort((a, b) => {
-              const aNum = parseInt(a.sr_no || '0');
-              const bNum = parseInt(b.sr_no || '0');
-              return bNum - aNum;
-            });
-            
-            const lastParty = sortedParties[0];
-            if (lastParty && lastParty.sr_no) {
-              const lastNumber = parseInt(lastParty.sr_no);
-              if (!isNaN(lastNumber)) {
-                nextSrNo = String(lastNumber + 1).padStart(3, '0');
-              }
-            }
-          }
-
-          // Create party data for the company
-          const companyPartyData = {
-            user_id: userId,
-            party_name: settingsData.companyName.trim(),
-            sr_no: nextSrNo,
-            status: 'A', // Active
-            commi_system: 'Take',
-            balance_limit: '0',
-            m_commission: 'No Commission',
-            rate: '0',
-            monday_final: 'No',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-
-          // Create the company party
-          const companyParty = await Party.create(companyPartyData);
-          
-          console.log(`✅ Auto-created company party: ${settingsData.companyName} (SR: ${nextSrNo}) for user ${userId}`);
-        } else {
-          console.log(`ℹ️ Company party already exists: ${settingsData.companyName} for user ${userId}`);
-        }
-      } catch (partyError) {
-        console.error('⚠️ Failed to create company party:', partyError);
-        // Don't fail the settings creation if party creation fails
-      }
-    }
-
     res.status(201).json({
       success: true,
       message: 'User settings created successfully',
@@ -146,64 +87,6 @@ const updateUserSettings = async (req, res) => {
     } else {
       // Update existing settings
       settings = await UserSettings.update(requestedUserId, updateData);
-    }
-
-    // Check if company name is being set/updated and create corresponding party
-    if (updateData.companyName && updateData.companyName.trim()) {
-      try {
-        // Check if a party with this company name already exists for this user
-        const existingParties = await Party.findByUserId(requestedUserId);
-        const existingCompanyParty = existingParties.find(p => 
-          p.party_name === updateData.companyName.trim() && p.user_id === requestedUserId
-        );
-
-        if (!existingCompanyParty) {
-          // Get next SR number for the user
-          const allParties = await Party.findByUserId(requestedUserId);
-          let nextSrNo = '001';
-          
-          if (allParties && allParties.length > 0) {
-            const sortedParties = allParties.sort((a, b) => {
-              const aNum = parseInt(a.sr_no || '0');
-              const bNum = parseInt(b.sr_no || '0');
-              return bNum - aNum;
-            });
-            
-            const lastParty = sortedParties[0];
-            if (lastParty && lastParty.sr_no) {
-              const lastNumber = parseInt(lastParty.sr_no);
-              if (!isNaN(lastNumber)) {
-                nextSrNo = String(lastNumber + 1).padStart(3, '0');
-              }
-            }
-          }
-
-          // Create party data for the company
-          const companyPartyData = {
-            user_id: requestedUserId,
-            party_name: updateData.companyName.trim(),
-            sr_no: nextSrNo,
-            status: 'A', // Active
-            commi_system: 'Take',
-            balance_limit: '0',
-            m_commission: 'No Commission',
-            rate: '0',
-            monday_final: 'No',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          };
-
-          // Create the company party
-          const companyParty = await Party.create(companyPartyData);
-          
-          console.log(`✅ Auto-created company party: ${updateData.companyName} (SR: ${nextSrNo}) for user ${requestedUserId}`);
-        } else {
-          console.log(`ℹ️ Company party already exists: ${updateData.companyName} for user ${requestedUserId}`);
-        }
-      } catch (partyError) {
-        console.error('⚠️ Failed to create company party:', partyError);
-        // Don't fail the settings update if party creation fails
-      }
     }
 
     res.json({
