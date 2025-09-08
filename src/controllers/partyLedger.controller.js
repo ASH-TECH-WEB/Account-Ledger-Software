@@ -896,10 +896,27 @@ const updateMondayFinal = async (req, res) => {
       return sendErrorResponse(res, 400, 'Party names array is required');
     }
 
+    // Get user's company name to check for company parties
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+    
+    const { data: settings } = await supabase
+      .from('user_settings')
+      .select('company_account')
+      .eq('user_id', userId)
+      .single();
+    
+    const companyName = settings?.company_account;
+
     let totalSettledEntries = 0;
 
     // Update Monday Final status and settle transactions for each party
     for (const partyName of partyNames) {
+      // Check if this is a company party
+      if (companyName && partyName === companyName) {
+        console.log(`🚫 Skipping Monday Final for company party: ${partyName}`);
+        continue; // Skip company parties
+      }
       const party = await Party.findByUserId(userId).then(parties => 
         parties.find(p => p.party_name === partyName)
       );
