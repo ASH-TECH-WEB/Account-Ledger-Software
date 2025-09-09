@@ -179,11 +179,15 @@ app.use(cors({
  * including compression, caching, and response optimization.
  */
 app.use(compression({
-  level: 6, // Balanced compression level
-  threshold: 1024, // Only compress responses > 1KB
+  level: 9, // Maximum compression for best performance
+  threshold: 512, // Compress responses > 512 bytes
   filter: (req, res) => {
     // Don't compress if client doesn't support it
     if (req.headers['x-no-compression']) {
+      return false;
+    }
+    // Skip compression for images
+    if (req.path.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
       return false;
     }
     // Use compression for all other requests

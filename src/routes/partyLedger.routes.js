@@ -34,15 +34,19 @@ const {
 } = require('../controllers/partyLedger.controller');
 
 const { getPartyLedgerOptimized } = require('../controllers/partyLedgerOptimized.controller');
+const { 
+  getPartyLedgerUltraOptimized, 
+  getAllPartiesUltraOptimized 
+} = require('../controllers/partyLedgerUltraOptimized.controller');
 
 // Apply authentication to all routes
 router.use(authenticateToken);
 
-// Get all parties for ledger
-router.get('/', getAllParties);
+// Get all parties for ledger (ultra-optimized version)
+router.get('/', getAllPartiesUltraOptimized);
 
-// Get ledger for specific party (optimized version)
-router.get('/:partyName', getPartyLedgerOptimized);
+// Get ledger for specific party (ultra-optimized version)
+router.get('/:partyName', getPartyLedgerUltraOptimized);
 
 // Add new ledger entry
 router.post('/entry', addEntry);
