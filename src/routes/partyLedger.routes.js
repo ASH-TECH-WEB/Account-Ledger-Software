@@ -42,11 +42,11 @@ const {
 // Apply authentication to all routes
 router.use(authenticateToken);
 
-// Get all parties for ledger (ultra-optimized version)
-router.get('/', getAllPartiesUltraOptimized);
+// Get all parties for ledger (optimized version)
+router.get('/', getAllParties);
 
-// Get ledger for specific party (ultra-optimized version)
-router.get('/:partyName', getPartyLedgerUltraOptimized);
+// Get ledger for specific party (optimized version)
+router.get('/:partyName', getPartyLedgerOptimized);
 
 // Add new ledger entry
 router.post('/entry', addEntry);
