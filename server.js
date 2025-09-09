@@ -710,14 +710,16 @@ app.get('/api/performance', (req, res) => {
 // Critical routes with aggressive caching (5 minutes)
 app.use('/api/dashboard', cacheMiddleware(300), dashboardRoutes);
 app.use('/api/settings', cacheMiddleware(300), userSettingsRoutes);
-app.use('/api/final-trial-balance', cacheMiddleware(300), finalTrialBalanceRoutes);
 
 // Party and ledger routes with moderate caching (2 minutes)
 app.use('/api/parties', cacheMiddleware(120), partyLedgerRoutes);
-app.use('/api/party-ledger', cacheMiddleware(120), partyLedgerRoutes);
+app.use('/api/party-ledger', cacheMiddleware(60), partyLedgerRoutes);
 
-// Authentication routes (no caching for security)
-app.use('/api/authentication', authRoutes);
+// Trial balance routes with aggressive caching (5 minutes)
+app.use('/api/final-trial-balance', cacheMiddleware(300), finalTrialBalanceRoutes);
+
+// Authentication routes with moderate caching (1 minute)
+app.use('/api/authentication', cacheMiddleware(60), authRoutes);
 
 // Other routes with light caching (1 minute)
 app.use('/api/new-party', cacheMiddleware(60), newPartyRoutes);
