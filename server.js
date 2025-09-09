@@ -172,6 +172,37 @@ app.use(cors({
   preflightContinue: false
 }));
 
+// Add preflight caching middleware for better performance
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    // Cache preflight requests for 24 hours
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Vary', 'Origin, Access-Control-Request-Method, Access-Control-Request-Headers');
+  }
+  next();
+});
+
+// Add response time optimization middleware
+app.use((req, res, next) => {
+  // Set connection keep-alive for better performance
+  res.setHeader('Connection', 'keep-alive');
+  
+  // Add performance headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Optimize for API responses
+  if (req.path.startsWith('/api/')) {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  
+  next();
+});
+
 /**
  * 🚀 Performance Optimizations
  * 
