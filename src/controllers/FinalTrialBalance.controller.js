@@ -1,4 +1,4 @@
-/**
+i /**
  * Final Trial Balance Controller - Enhanced Version
  * 
  * Handles trial balance calculations using Supabase with enhanced
@@ -11,7 +11,7 @@
 
 // Import required models and utilities
 const LedgerEntry = require('../models/supabase/LedgerEntry');
-const Party = require('../models/supabase/Party');
+const Party = require('../models/supabase/Party')
 const { supabase } = require('../config/supabase');
 const { getCache, setCache, deleteCachePattern } = require('../config/redis');
 

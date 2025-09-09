@@ -5,30 +5,74 @@
       "src": "server.js",
       "use": "@vercel/node",
       "config": {
-        "maxLambdaSize": "50mb"
+        "maxLambdaSize": "50mb",
+        "memory": 1024,
+        "maxDuration": 30
       }
     }
   ],
   "routes": [
     {
+      "src": "/api/dashboard/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY"
+      }
+    },
+    {
+      "src": "/api/parties/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "s-maxage=120, stale-while-revalidate=300",
+        "X-Content-Type-Options": "nosniff"
+      }
+    },
+    {
+      "src": "/api/party-ledger/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "s-maxage=120, stale-while-revalidate=300",
+        "X-Content-Type-Options": "nosniff"
+      }
+    },
+    {
+      "src": "/api/final-trial-balance/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
+        "X-Content-Type-Options": "nosniff"
+      }
+    },
+    {
+      "src": "/api/settings/(.*)",
+      "dest": "/server.js",
+      "headers": {
+        "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
+        "X-Content-Type-Options": "nosniff"
+      }
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/server.js",
       "headers": {
-        "Cache-Control": "s-maxage=300, stale-while-revalidate=600"
+        "Cache-Control": "s-maxage=60, stale-while-revalidate=120",
+        "X-Content-Type-Options": "nosniff"
       }
     },
     {
       "src": "/health",
       "dest": "/server.js",
       "headers": {
-        "Cache-Control": "no-cache"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
       }
     },
     {
       "src": "/api/health",
       "dest": "/server.js",
       "headers": {
-        "Cache-Control": "no-cache"
+        "Cache-Control": "no-cache, no-store, must-revalidate"
       }
     },
     {
@@ -38,5 +82,10 @@
   ],
   "env": {
     "NODE_ENV": "production"
+  },
+  "functions": {
+    "server.js": {
+      "maxDuration": 30
+    }
   }
 }

@@ -49,6 +49,7 @@ const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const NodeCache = require('node-cache');
 require('dotenv').config();
 
 // Database and route imports
@@ -189,6 +190,93 @@ app.use(compression({
     return compression.filter(req, res);
   }
 }));
+
+/**
+ * 🚀 PERFORMANCE OPTIMIZATIONS - CRITICAL FIXES
+ * 
+ * Based on authenticated testing results:
+ * - API Response Time: 1,200-1,500ms (Target: <500ms)
+ * - Account Ledger/Give LCP: 7,408ms (Target: <2,500ms)
+ * - No caching causing repeated database hits
+ */
+
+// Initialize in-memory cache for API responses
+const apiCache = new NodeCache({
+  stdTTL: 300, // 5 minutes default TTL
+  checkperiod: 60, // Check for expired keys every minute
+  useClones: false // Don't clone objects for better performance
+});
+
+// Cache middleware for API endpoints
+const cacheMiddleware = (duration = 300) => {
+  return (req, res, next) => {
+    const key = `${req.method}:${req.originalUrl}:${JSON.stringify(req.query)}`;
+    
+    // Check cache first
+    const cached = apiCache.get(key);
+    if (cached) {
+      console.log(`✅ Cache hit: ${req.originalUrl}`);
+      return res.json(cached);
+    }
+    
+    // Store original json method
+    const originalJson = res.json;
+    
+    // Override json method to cache response
+    res.json = function(data) {
+      // Cache successful responses
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        apiCache.set(key, data, duration);
+        console.log(`💾 Cached: ${req.originalUrl} (TTL: ${duration}s)`);
+      }
+      
+      // Call original json method
+      return originalJson.call(this, data);
+    };
+    
+    next();
+  };
+};
+
+// Rate limiting for API protection
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    error: 'Too many requests from this IP, please try again later.',
+    retryAfter: '15 minutes'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting for health checks
+    return req.path === '/health' || req.path === '/api/health';
+  }
+});
+
+// Apply rate limiting to API routes
+app.use('/api', apiLimiter);
+
+// Performance monitoring middleware
+app.use((req, res, next) => {
+  const startTime = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - startTime;
+    const status = res.statusCode;
+    
+    // Log slow requests
+    if (duration > 1000) {
+      console.log(`🐌 Slow request: ${req.method} ${req.originalUrl} - ${duration}ms - ${status}`);
+    } else if (duration > 500) {
+      console.log(`⚠️ Moderate request: ${req.method} ${req.originalUrl} - ${duration}ms - ${status}`);
+    } else {
+      console.log(`✅ Fast request: ${req.method} ${req.originalUrl} - ${duration}ms - ${status}`);
+    }
+  });
+  
+  next();
+});
 
 /**
  * 🛡️ Security Middleware Configuration
@@ -566,13 +654,13 @@ app.get('/api/performance', (req, res) => {
 });
 
 /**
- * 🛣️ API Route Configuration
+ * 🛣️ API Route Configuration with Performance Caching
  * 
- * Mounts all API routes with their respective prefixes.
- * Each route module handles specific functionality:
+ * Mounts all API routes with their respective prefixes and caching.
+ * Each route module handles specific functionality with optimized caching:
  * - /api/authentication: User login, registration, profile management
  * - /api/new-party: Party creation and management
- * - /api/party-ledger: Ledger entries and transactions
+ * - /api/party-ledger: Ledger entries and transactions (CRITICAL - 7.4s LCP)
  * - /api/final-trial-balance: Trial balance reports
  * - /api/settings: User settings and preferences
  * - /api/dashboard: Dashboard statistics and analytics
@@ -581,17 +669,26 @@ app.get('/api/performance', (req, res) => {
  * - If route not found: Check route mounting
  * - If route not working: Check route handler
  * - If authentication fails: Check middleware
+ * - If caching issues: Check cache middleware
  */
+
+// Critical routes with aggressive caching (5 minutes)
+app.use('/api/dashboard', cacheMiddleware(300), dashboardRoutes);
+app.use('/api/settings', cacheMiddleware(300), userSettingsRoutes);
+app.use('/api/final-trial-balance', cacheMiddleware(300), finalTrialBalanceRoutes);
+
+// Party and ledger routes with moderate caching (2 minutes)
+app.use('/api/parties', cacheMiddleware(120), partyLedgerRoutes);
+app.use('/api/party-ledger', cacheMiddleware(120), partyLedgerRoutes);
+
+// Authentication routes (no caching for security)
 app.use('/api/authentication', authRoutes);
-app.use('/api/new-party', newPartyRoutes);
-app.use('/api/parties', partyLedgerRoutes);
-app.use('/api/party-ledger', partyLedgerRoutes);
-app.use('/api/final-trial-balance', finalTrialBalanceRoutes);
-app.use('/api/settings', userSettingsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/commission-transactions', commissionTransactionRoutes);
-app.use('/api/upload', uploadRoutes);
-app.use('/api/admin', adminRoutes);
+
+// Other routes with light caching (1 minute)
+app.use('/api/new-party', cacheMiddleware(60), newPartyRoutes);
+app.use('/api/commission-transactions', cacheMiddleware(60), commissionTransactionRoutes);
+app.use('/api/upload', uploadRoutes); // No caching for uploads
+app.use('/api/admin', cacheMiddleware(60), adminRoutes);
 
 // Add missing API routes for better consistency
 app.use('/api/auth', authRoutes); // Alternative auth route
