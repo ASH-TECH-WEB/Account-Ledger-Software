@@ -96,14 +96,22 @@ const updateUserSettings = async (req, res) => {
       try {
         console.log(`🏢 Company name changed from "${oldCompanyName}" to "${updateData.company_account}"`);
         
-        // Check if company party already exists
+        // Import migration function
+        const { migrateCompanyNameChange } = require('../../scripts/migrate-company-name-change');
+        
+        // Run migration to update existing data
+        console.log('🔄 Running company name migration...');
+        await migrateCompanyNameChange(requestedUserId, oldCompanyName, updateData.company_account);
+        console.log('✅ Company name migration completed');
+        
+        // Check if company party already exists (after migration)
         const existingParties = await Party.findByUserId(requestedUserId);
         const companyPartyExists = existingParties?.some(party => 
           party.party_name === updateData.company_account
         );
         
         if (!companyPartyExists) {
-          // Create new company party
+          // Create new company party if it doesn't exist after migration
           const companyPartyData = {
             user_id: requestedUserId,
             party_name: updateData.company_account,
@@ -127,8 +135,8 @@ const updateUserSettings = async (req, res) => {
           console.log(`ℹ️ Company party already exists: ${updateData.company_account}`);
         }
       } catch (partyError) {
-        console.error('❌ Error creating company party:', partyError);
-        // Don't fail the settings update if party creation fails
+        console.error('❌ Error during company name migration:', partyError);
+        // Don't fail the settings update if migration fails
       }
     }
 
