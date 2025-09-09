@@ -219,11 +219,13 @@ const getSystemHealthData = async () => {
   
   if (cachedHealth) return cachedHealth;
 
-  const health = { database: 'online', api: 'healthy', authentication: 'active', fileStorage: 'warning', cache: 'unknown' };
+  const health = { database: 'online', api: 'healthy', authentication: 'active', fileStorage: 'unknown', cache: 'unknown' };
 
-  const [dbResult, cacheResult] = await Promise.allSettled([
+  const [dbResult, cacheResult, storageResult] = await Promise.allSettled([
     supabase.from('users').select('count').limit(1),
-    getCache('health:test')
+    getCache('health:test'),
+    // Test Supabase Storage by listing buckets
+    supabase.storage.listBuckets()
   ]);
 
   if (dbResult.status === 'fulfilled' && !dbResult.value.error) {
@@ -236,6 +238,13 @@ const getSystemHealthData = async () => {
     health.cache = 'online';
   } else {
     health.cache = 'offline';
+  }
+
+  // Check file storage (Supabase Storage)
+  if (storageResult.status === 'fulfilled' && !storageResult.value.error) {
+    health.fileStorage = 'online';
+  } else {
+    health.fileStorage = 'error';
   }
 
   await setCache(cacheKey, health, 120);
@@ -507,12 +516,12 @@ const getSystemHealth = async (req, res) => {
       database: 'online',
       api: 'healthy',
       authentication: 'active',
-      fileStorage: 'warning',
+      fileStorage: 'unknown',
       cache: 'unknown'
     };
 
     // Test all connections in parallel
-    const [dbResult, cacheResult] = await Promise.allSettled([
+    const [dbResult, cacheResult, storageResult] = await Promise.allSettled([
       // Test database connection
       supabase
         .from('users')
@@ -520,7 +529,10 @@ const getSystemHealth = async (req, res) => {
         .limit(1),
       
       // Test Redis connection
-      getCache('health:test')
+      getCache('health:test'),
+      
+      // Test Supabase Storage
+      supabase.storage.listBuckets()
     ]);
 
     // Process database result
@@ -535,6 +547,13 @@ const getSystemHealth = async (req, res) => {
       health.cache = 'online';
     } else {
       health.cache = 'offline';
+    }
+
+    // Process file storage result
+    if (storageResult.status === 'fulfilled' && !storageResult.value.error) {
+      health.fileStorage = 'online';
+    } else {
+      health.fileStorage = 'error';
     }
 
     // Cache for 2 minutes
