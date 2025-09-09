@@ -104,6 +104,13 @@ app.set('trust proxy', 1);
 const { performanceMonitor } = require('./src/middlewares/performance');
 
 /**
+ * 🚀 Performance Optimizations
+ * 
+ * Advanced performance optimizations for production deployment
+ * including compression, caching, and response optimization.
+ */
+
+/**
  * 🗄️ Database Connection
  * 
  * Database connections are handled by Supabase and PostgreSQL clients.
@@ -162,6 +169,25 @@ app.use(cors({
   exposedHeaders: ['Content-Length', 'X-Requested-With'],
   optionsSuccessStatus: 200,
   preflightContinue: false
+}));
+
+/**
+ * 🚀 Performance Optimizations
+ * 
+ * Advanced performance optimizations for production deployment
+ * including compression, caching, and response optimization.
+ */
+app.use(compression({
+  level: 6, // Balanced compression level
+  threshold: 1024, // Only compress responses > 1KB
+  filter: (req, res) => {
+    // Don't compress if client doesn't support it
+    if (req.headers['x-no-compression']) {
+      return false;
+    }
+    // Use compression for all other requests
+    return compression.filter(req, res);
+  }
 }));
 
 /**
