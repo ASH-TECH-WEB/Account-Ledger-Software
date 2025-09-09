@@ -33,14 +33,16 @@ const {
   deleteMondayFinalEntry
 } = require('../controllers/partyLedger.controller');
 
+const { getPartyLedgerOptimized } = require('../controllers/partyLedgerOptimized.controller');
+
 // Apply authentication to all routes
 router.use(authenticateToken);
 
 // Get all parties for ledger
 router.get('/', getAllParties);
 
-// Get ledger for specific party
-router.get('/:partyName', getPartyLedger);
+// Get ledger for specific party (optimized version)
+router.get('/:partyName', getPartyLedgerOptimized);
 
 // Add new ledger entry
 router.post('/entry', addEntry);
