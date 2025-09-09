@@ -154,60 +154,7 @@ const getDashboardStatsData = async () => {
   return stats;
 };
 
-const getRecentActivityData = async (limit) => {
-  const cacheKey = `admin:recent-activity:${limit}`;
-  const cachedActivity = await getCache(cacheKey);
-  
-  if (cachedActivity) return cachedActivity;
-
-  const [entriesResult, partiesResult, usersResult] = await Promise.allSettled([
-    supabase.from('ledger_entries').select('id, party_name, tns_type, credit, debit, created_at, users!inner(name, email)').order('created_at', { ascending: false }).limit(limit),
-    supabase.from('parties').select('id, party_name, created_at, users!inner(name, email)').order('created_at', { ascending: false }).limit(limit),
-    supabase.from('users').select('id, name, email, created_at').order('created_at', { ascending: false }).limit(limit)
-  ]);
-
-  const activities = [];
-
-  if (entriesResult.status === 'fulfilled' && entriesResult.value.data) {
-    entriesResult.value.data.forEach(entry => {
-      activities.push({
-        id: `ledger_${entry.id}`, type: 'transaction',
-        action: `${entry.tns_type} transaction`,
-        details: `${entry.party_name} - ₹${entry.credit || entry.debit || 0}`,
-        user: entry.users?.name || 'Unknown User',
-        userEmail: entry.users?.email || '', timestamp: entry.created_at, status: 'success'
-      });
-    });
-  }
-
-  if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
-    partiesResult.value.data.forEach(party => {
-      activities.push({
-        id: `party_${party.id}`, type: 'party',
-        action: 'New party created', details: party.party_name,
-        user: party.users?.name || 'Unknown User',
-        userEmail: party.users?.email || '', timestamp: party.created_at, status: 'success'
-      });
-    });
-  }
-
-  if (usersResult.status === 'fulfilled' && usersResult.value.data) {
-    usersResult.value.data.forEach(user => {
-      activities.push({
-        id: `user_${user.id}`, type: 'user',
-        action: 'User registered', details: user.email,
-        user: user.name || 'New User', userEmail: user.email,
-        timestamp: user.created_at, status: 'info'
-      });
-    });
-  }
-
-  activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-  const limitedActivities = activities.slice(0, limit);
-
-  await setCache(cacheKey, limitedActivities, 300);
-  return limitedActivities;
-};
+// Recent activity feature removed
 
 const getAllUsersData = async (page, limit, search) => {
   const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -414,113 +361,7 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-/**
- * Get recent activity for admin dashboard
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- */
-const getRecentActivity = async (req, res) => {
-  const startTime = Date.now();
-  
-  try {
-    const { limit = 10 } = req.query;
-    const cacheKey = `admin:recent-activity:${limit}`;
-    const cachedActivity = await getCache(cacheKey);
-    
-    if (cachedActivity) {
-      console.log(`📈 Activity from cache in ${Date.now() - startTime}ms`);
-      return sendSuccessResponse(res, cachedActivity, 'Recent activity from cache');
-    }
-
-    console.log('🔄 Fetching fresh activity from database...');
-
-    // Run all queries in parallel for maximum speed
-    const [entriesResult, partiesResult, usersResult] = await Promise.allSettled([
-      supabase
-        .from('ledger_entries')
-        .select('id, party_name, tns_type, credit, debit, created_at, users!inner(name, email)')
-        .order('created_at', { ascending: false })
-        .limit(parseInt(limit)),
-      
-      supabase
-        .from('parties')
-        .select('id, party_name, created_at, users!inner(name, email)')
-        .order('created_at', { ascending: false })
-        .limit(parseInt(limit)),
-      
-      supabase
-        .from('users')
-        .select('id, name, email, created_at')
-        .order('created_at', { ascending: false })
-        .limit(parseInt(limit))
-    ]);
-
-    const activities = [];
-
-    // Process ledger entries
-    if (entriesResult.status === 'fulfilled' && entriesResult.value.data) {
-      entriesResult.value.data.forEach(entry => {
-        activities.push({
-          id: `ledger_${entry.id}`,
-          type: 'transaction',
-          action: `${entry.tns_type} transaction`,
-          details: `${entry.party_name} - ₹${entry.credit || entry.debit || 0}`,
-          user: entry.users?.name || 'Unknown User',
-          userEmail: entry.users?.email || '',
-          timestamp: entry.created_at,
-          status: 'success'
-        });
-      });
-    }
-
-    // Process parties
-    if (partiesResult.status === 'fulfilled' && partiesResult.value.data) {
-      partiesResult.value.data.forEach(party => {
-        activities.push({
-          id: `party_${party.id}`,
-          type: 'party',
-          action: 'New party created',
-          details: party.party_name,
-          user: party.users?.name || 'Unknown User',
-          userEmail: party.users?.email || '',
-          timestamp: party.created_at,
-          status: 'success'
-        });
-      });
-    }
-
-    // Process users
-    if (usersResult.status === 'fulfilled' && usersResult.value.data) {
-      usersResult.value.data.forEach(user => {
-        activities.push({
-          id: `user_${user.id}`,
-          type: 'user',
-          action: 'User registered',
-          details: user.email,
-          user: user.name || 'New User',
-          userEmail: user.email,
-          timestamp: user.created_at,
-          status: 'info'
-        });
-      });
-    }
-
-    // Sort by timestamp and limit
-    activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const limitedActivities = activities.slice(0, parseInt(limit));
-
-    // Cache for 5 minutes (increased cache time)
-    await setCache(cacheKey, limitedActivities, 300);
-
-    const loadTime = Date.now() - startTime;
-    console.log(`⚡ Activity loaded in ${loadTime}ms`);
-
-    sendSuccessResponse(res, limitedActivities, `Recent activity retrieved successfully in ${loadTime}ms`);
-  } catch (error) {
-    console.error('❌ Activity loading error:', error);
-    sendErrorResponse(res, 500, 'Failed to retrieve recent activity', error);
-  }
-};
+// Recent activity feature removed
 
 /**
  * Get all users for admin management
@@ -1154,7 +995,6 @@ const disapproveUser = async (req, res) => {
 module.exports = {
   getDashboardData,
   getDashboardStats,
-  getRecentActivity,
   getAllUsers,
   getSystemHealth,
   deleteUser,

@@ -18,7 +18,6 @@ const router = express.Router();
 const {
   getDashboardData,
   getDashboardStats,
-  getRecentActivity,
   getAllUsers,
   getSystemHealth,
   deleteUser,
@@ -35,8 +34,7 @@ router.get('/dashboard-data', getDashboardData);
 // Admin dashboard statistics
 router.get('/stats', getDashboardStats);
 
-// Recent activity feed
-router.get('/activity', getRecentActivity);
+// Recent activity feature removed
 
 // User management
 router.get('/users', getAllUsers);
@@ -61,7 +59,6 @@ router.get('/', (req, res) => {
     message: 'Admin API is running',
     endpoints: {
       stats: 'GET /stats - Dashboard statistics',
-      activity: 'GET /activity - Recent activity feed',
       users: 'GET /users - User management',
       health: 'GET /health - System health status',
       getUser: 'GET /users/:userId - Get user details',

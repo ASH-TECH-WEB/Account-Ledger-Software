@@ -142,43 +142,7 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
-/**
- * Get recent activity
- */
-const getRecentActivity = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { limit = 20 } = req.query;
-
-    // Get all ledger entries for user
-    const entries = await LedgerEntry.findByUserId(userId);
-    
-    // Sort by creation date and limit results
-    const recentEntries = entries
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, parseInt(limit))
-      .map(entry => ({
-        id: entry.id,
-        partyName: entry.party_name,
-        type: entry.tns_type,
-        amount: entry.tns_type === 'CR' ? entry.credit : entry.debit,
-        date: entry.date,
-        remarks: entry.remarks,
-        createdAt: entry.created_at
-      }));
-
-    res.json({
-      success: true,
-      message: 'Recent activity retrieved successfully',
-      data: recentEntries
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to get recent activity'
-    });
-  }
-};
+// Recent activity feature removed
 
 /**
  * Get summary statistics
@@ -264,6 +228,5 @@ const getSummaryStats = async (req, res) => {
 
 module.exports = {
   getDashboardStats,
-  getRecentActivity,
   getSummaryStats
 }; 
