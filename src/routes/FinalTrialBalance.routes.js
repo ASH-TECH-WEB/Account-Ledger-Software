@@ -25,11 +25,20 @@ const {
   forceRefreshTrialBalance
 } = require('../controllers/FinalTrialBalance.controller');
 
+// Import ultra-optimized controllers
+const {
+  getFinalTrialBalanceUltraOptimized,
+  getTrialBalanceSummaryUltraOptimized
+} = require('../controllers/FinalTrialBalanceUltraOptimized.controller');
+
 // Apply authentication to all routes
 router.use(authenticateToken);
 
-// Get final trial balance
-router.get('/', getFinalTrialBalance);
+// Get final trial balance (ultra-optimized version)
+router.get('/', getFinalTrialBalanceUltraOptimized);
+
+// Get trial balance summary (ultra-optimized version)
+router.get('/summary', getTrialBalanceSummaryUltraOptimized);
 
 // Force refresh trial balance (bypass cache for real-time updates)
 router.get('/refresh', forceRefreshTrialBalance);
