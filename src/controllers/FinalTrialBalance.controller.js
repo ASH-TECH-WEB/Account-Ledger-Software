@@ -1,4 +1,4 @@
-i /**
+/**
  * Final Trial Balance Controller - Enhanced Version
  * 
  * Handles trial balance calculations using Supabase with enhanced
