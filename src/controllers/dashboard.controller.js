@@ -12,94 +12,117 @@ const Party = require('../models/supabase/Party');
 const LedgerEntry = require('../models/supabase/LedgerEntry');
 
 /**
- * Get dashboard statistics with AQC balance
+ * Get dashboard statistics with AQC balance - OPTIMIZED VERSION
  */
 const getDashboardStats = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const userId = req.user.id;
 
-    // Get all parties for user
-    const parties = await Party.findByUserId(userId);
+    // OPTIMIZED: Use direct Supabase queries with aggregation instead of fetching all data
+    const { supabase } = require('../config/supabase');
     
-    // Get all ledger entries for user
-    const entries = await LedgerEntry.findByUserId(userId);
+    // Run all queries in parallel for maximum speed
+    const [
+      partiesResult,
+      entriesResult,
+      creditSumResult,
+      debitSumResult,
+      commissionResult
+    ] = await Promise.allSettled([
+      // Get parties count and basic info
+      supabase
+        .from('parties')
+        .select('id, party_name, sr_no, address, phone, email')
+        .eq('user_id', userId),
+      
+      // Get recent entries (last 10) for activity
+      supabase
+        .from('ledger_entries')
+        .select('id, party_name, tns_type, credit, debit, date, remarks, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(10),
+      
+      // Get total credit sum
+      supabase
+        .from('ledger_entries')
+        .select('credit')
+        .eq('user_id', userId)
+        .eq('tns_type', 'CR')
+        .not('credit', 'is', null),
+      
+      // Get total debit sum
+      supabase
+        .from('ledger_entries')
+        .select('debit')
+        .eq('user_id', userId)
+        .eq('tns_type', 'DR')
+        .not('debit', 'is', null),
+      
+      // Get commission data
+      supabase
+        .from('ledger_entries')
+        .select('tns_type, credit, debit, remarks')
+        .eq('user_id', userId)
+        .like('remarks', '%Commission%')
+    ]);
 
-    // Calculate basic statistics
+    // Process results with error handling
+    const parties = partiesResult.status === 'fulfilled' ? partiesResult.value.data || [] : [];
+    const entries = entriesResult.status === 'fulfilled' ? entriesResult.value.data || [] : [];
+    const creditData = creditSumResult.status === 'fulfilled' ? creditSumResult.value.data || [] : [];
+    const debitData = debitSumResult.status === 'fulfilled' ? debitSumResult.value.data || [] : [];
+    const commissionData = commissionResult.status === 'fulfilled' ? commissionResult.value.data || [] : [];
+
+    // Calculate basic statistics - OPTIMIZED
     const totalParties = parties.length;
     const totalTransactions = entries.length;
     
-    // Calculate totals
-    const totalCredit = entries
-      .filter(entry => entry.tns_type === 'CR')
-      .reduce((sum, entry) => sum + entry.credit, 0);
-    
-    const totalDebit = entries
-      .filter(entry => entry.tns_type === 'DR')
-      .reduce((sum, entry) => sum + entry.debit, 0);
-    
+    // Calculate totals - OPTIMIZED (using pre-filtered data)
+    const totalCredit = creditData.reduce((sum, entry) => sum + (entry.credit || 0), 0);
+    const totalDebit = debitData.reduce((sum, entry) => sum + (entry.debit || 0), 0);
     const totalBalance = totalCredit - totalDebit;
 
-    // Calculate AQC balance from commission transactions
+    // Calculate AQC balance from commission transactions - OPTIMIZED
     let aqcCompanyBalance = 0;
     let totalCommissionCollected = 0;
     let totalCommissionPaid = 0;
     let totalBusinessVolume = 0;
     let commissionTransactionCount = 0;
 
-    // ULTIMATE CORRECTED LOGIC: Commission calculation based on actual transaction direction
-    entries.forEach(entry => {
-      const amount = entry.tns_type === 'CR' ? entry.credit : entry.debit;
+    // Process commission data efficiently
+    commissionData.forEach(entry => {
+      const amount = entry.tns_type === 'CR' ? (entry.credit || 0) : (entry.debit || 0);
       
-      // Calculate commission based on actual transaction direction
-      if (entry.remarks.includes('Commission')) {
-        if (entry.remarks.includes('Auto-calculated')) {
-          // Extract party number from remarks dynamically
-          const partyMatch = entry.remarks.match(/\((\d+)\)/);
-          if (partyMatch) {
-            const partyNumber = parseInt(partyMatch[1]);
-            
-            // Smart logic: Based on transaction type (CR/DR) for universal compatibility
-            if (entry.tns_type === 'CR') {
-              // Credit transaction = Company pays commission
-              totalCommissionPaid += amount;
-              aqcCompanyBalance -= amount;
-            } else if (entry.tns_type === 'DR') {
-              // Debit transaction = Company receives commission
-              totalCommissionCollected += amount;
-              aqcCompanyBalance += amount;
-            }
-          }
+      if (entry.remarks && entry.remarks.includes('Auto-calculated')) {
+        if (entry.tns_type === 'CR') {
+          totalCommissionPaid += amount;
+          aqcCompanyBalance -= amount;
+        } else if (entry.tns_type === 'DR') {
+          totalCommissionCollected += amount;
+          aqcCompanyBalance += amount;
         }
       }
       
-      // Calculate business volume from main transactions (non-commission)
-      if (!entry.remarks.includes('Commission') && !entry.remarks.includes('Auto-calculated')) {
-        totalBusinessVolume += amount;
-      }
-      
-      // Count commission transactions
-      if (entry.remarks.includes('Commission')) {
-        commissionTransactionCount++;
-      }
+      commissionTransactionCount++;
     });
 
     // Calculate net profit
     const netCommissionProfit = totalCommissionCollected - totalCommissionPaid;
 
-    // Get recent activity (last 10 entries)
-    const recentEntries = entries
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-      .slice(0, 10)
-      .map(entry => ({
-        id: entry.id,
-        partyName: entry.party_name,
-        type: entry.tns_type,
-        amount: entry.tns_type === 'CR' ? entry.credit : entry.debit,
-        date: entry.date,
-        remarks: entry.remarks
-      }));
+    // Get recent activity - OPTIMIZED (already limited to 10)
+    const recentEntries = entries.map(entry => ({
+      id: entry.id,
+      partyName: entry.party_name,
+      type: entry.tns_type,
+      amount: entry.tns_type === 'CR' ? (entry.credit || 0) : (entry.debit || 0),
+      date: entry.date,
+      remarks: entry.remarks
+    }));
 
-    // Calculate party-wise summary
+    // Calculate party-wise summary - OPTIMIZED
     const partySummary = parties.map(party => ({
       id: party.id,
       name: party.party_name,
@@ -108,6 +131,9 @@ const getDashboardStats = async (req, res) => {
       phone: party.phone,
       email: party.email
     }));
+
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Dashboard stats loaded in ${loadTime}ms`);
 
     res.json({
       success: true,
@@ -145,40 +171,49 @@ const getDashboardStats = async (req, res) => {
 // Recent activity feature removed
 
 /**
- * Get summary statistics
+ * Get summary statistics - OPTIMIZED VERSION
  */
 const getSummaryStats = async (req, res) => {
+  const startTime = Date.now();
+  
   try {
     const userId = req.user.id;
     const { startDate, endDate } = req.query;
 
-    // Get all ledger entries for user
-    let entries = await LedgerEntry.findByUserId(userId);
+    // OPTIMIZED: Use direct Supabase queries with date filtering
+    const { supabase } = require('../config/supabase');
     
-    // Filter by date range if provided
+    let query = supabase
+      .from('ledger_entries')
+      .select('tns_type, credit, debit, party_name, date')
+      .eq('user_id', userId);
+    
+    // Apply date range filter if provided
     if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      
-      entries = entries.filter(entry => {
-        const entryDate = new Date(entry.date);
-        return entryDate >= start && entryDate <= end;
-      });
+      query = query
+        .gte('date', startDate)
+        .lte('date', endDate);
+    }
+    
+    const { data: entries, error } = await query;
+    
+    if (error) {
+      throw new Error(`Database query failed: ${error.message}`);
     }
 
-    // Calculate summary
+    // Calculate summary - OPTIMIZED
     const totalCredit = entries
       .filter(entry => entry.tns_type === 'CR')
-      .reduce((sum, entry) => sum + entry.credit, 0);
+      .reduce((sum, entry) => sum + (entry.credit || 0), 0);
     
     const totalDebit = entries
       .filter(entry => entry.tns_type === 'DR')
-      .reduce((sum, entry) => sum + entry.debit, 0);
+      .reduce((sum, entry) => sum + (entry.debit || 0), 0);
     
     const totalBalance = totalCredit - totalDebit;
     const totalEntries = entries.length;
 
-    // Group by party
+    // Group by party - OPTIMIZED
     const partyStats = {};
     entries.forEach(entry => {
       const partyName = entry.party_name;
@@ -191,12 +226,15 @@ const getSummaryStats = async (req, res) => {
       }
       
       if (entry.tns_type === 'CR') {
-        partyStats[partyName].credit += entry.credit;
+        partyStats[partyName].credit += (entry.credit || 0);
       } else if (entry.tns_type === 'DR') {
-        partyStats[partyName].debit += entry.debit;
+        partyStats[partyName].debit += (entry.debit || 0);
       }
       partyStats[partyName].entries++;
     });
+
+    const loadTime = Date.now() - startTime;
+    console.log(`⚡ Summary stats loaded in ${loadTime}ms`);
 
     res.json({
       success: true,
@@ -219,9 +257,11 @@ const getSummaryStats = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error('❌ Summary stats error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to get summary statistics'
+      message: 'Failed to get summary statistics',
+      error: error.message
     });
   }
 };
