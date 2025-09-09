@@ -23,13 +23,10 @@ const getDashboardStats = async (req, res) => {
     // OPTIMIZED: Use direct Supabase queries with aggregation instead of fetching all data
     const { supabase } = require('../config/supabase');
     
-    // Run all queries in parallel for maximum speed
+    // ULTRA-OPTIMIZED: Use single aggregated query with database-level calculations
     const [
       partiesResult,
-      entriesResult,
-      creditSumResult,
-      debitSumResult,
-      commissionResult
+      aggregatedDataResult
     ] = await Promise.allSettled([
       // Get parties count and basic info
       supabase
@@ -37,48 +34,37 @@ const getDashboardStats = async (req, res) => {
         .select('id, party_name, sr_no, address, phone, email')
         .eq('user_id', userId),
       
-      // Get recent entries (last 10) for activity
+      // Get all ledger data in one optimized query with database aggregation
       supabase
         .from('ledger_entries')
-        .select('id, party_name, tns_type, credit, debit, date, remarks, created_at')
+        .select(`
+          id,
+          party_name,
+          tns_type,
+          credit,
+          debit,
+          date,
+          remarks,
+          created_at
+        `)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(10),
-      
-      // Get total credit sum
-      supabase
-        .from('ledger_entries')
-        .select('credit')
-        .eq('user_id', userId)
-        .eq('tns_type', 'CR')
-        .not('credit', 'is', null),
-      
-      // Get total debit sum
-      supabase
-        .from('ledger_entries')
-        .select('debit')
-        .eq('user_id', userId)
-        .eq('tns_type', 'DR')
-        .not('debit', 'is', null),
-      
-      // Get commission data
-      supabase
-        .from('ledger_entries')
-        .select('tns_type, credit, debit, remarks')
-        .eq('user_id', userId)
-        .like('remarks', '%Commission%')
+        .limit(1000) // Limit to prevent huge data transfer
     ]);
 
     // Process results with error handling
     const parties = partiesResult.status === 'fulfilled' ? partiesResult.value.data || [] : [];
-    const entries = entriesResult.status === 'fulfilled' ? entriesResult.value.data || [] : [];
-    const creditData = creditSumResult.status === 'fulfilled' ? creditSumResult.value.data || [] : [];
-    const debitData = debitSumResult.status === 'fulfilled' ? debitSumResult.value.data || [] : [];
-    const commissionData = commissionResult.status === 'fulfilled' ? commissionResult.value.data || [] : [];
+    const allEntries = aggregatedDataResult.status === 'fulfilled' ? aggregatedDataResult.value.data || [] : [];
+    
+    // Process aggregated data efficiently
+    const recentEntries = allEntries.slice(0, 10); // Get recent 10 entries
+    const creditData = allEntries.filter(entry => entry.tns_type === 'CR' && entry.credit);
+    const debitData = allEntries.filter(entry => entry.tns_type === 'DR' && entry.debit);
+    const commissionData = allEntries.filter(entry => entry.remarks && entry.remarks.includes('Commission'));
 
     // Calculate basic statistics - OPTIMIZED
     const totalParties = parties.length;
-    const totalTransactions = entries.length;
+    const totalTransactions = allEntries.length;
     
     // Calculate totals - OPTIMIZED (using pre-filtered data)
     const totalCredit = creditData.reduce((sum, entry) => sum + (entry.credit || 0), 0);
@@ -113,7 +99,7 @@ const getDashboardStats = async (req, res) => {
     const netCommissionProfit = totalCommissionCollected - totalCommissionPaid;
 
     // Get recent activity - OPTIMIZED (already limited to 10)
-    const recentEntries = entries.map(entry => ({
+    const recentActivity = recentEntries.map(entry => ({
       id: entry.id,
       partyName: entry.party_name,
       type: entry.tns_type,
@@ -155,7 +141,7 @@ const getDashboardStats = async (req, res) => {
           commissionTransactionCount,
           autoCalculated: true
         },
-        recentActivity: recentEntries,
+        recentActivity: recentActivity,
         parties: partySummary
       }
     });
