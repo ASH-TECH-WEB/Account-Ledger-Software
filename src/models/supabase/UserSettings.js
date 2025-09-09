@@ -108,6 +108,45 @@ class UserSettings {
         };
         
         settings = await this.create(defaultSettings);
+        
+        // Auto-create Commission party for new users
+        try {
+          const Party = require('./Party');
+          
+          // Check if Commission party already exists
+          const existingParties = await Party.findByUserId(userId);
+          const commissionPartyExists = existingParties?.some(party => 
+            party.party_name === 'Commission'
+          );
+          
+          if (!commissionPartyExists) {
+            // Create Commission party
+            const commissionPartyData = {
+              user_id: userId,
+              party_name: 'Commission',
+              sr_no: `COMM_${Date.now()}`,
+              status: 'A', // Active
+              commi_system: 'Give', // Commission system
+              balance_limit: '0',
+              m_commission: 'With Commission',
+              rate: '0', // No rate for Commission party itself
+              monday_final: 'No',
+              address: '',
+              phone: '',
+              email: '',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            };
+            
+            const newCommissionParty = await Party.create(commissionPartyData);
+            console.log(`✅ Commission party created for new user: ${userId} (ID: ${newCommissionParty.id})`);
+          } else {
+            console.log(`ℹ️ Commission party already exists for user: ${userId}`);
+          }
+        } catch (partyError) {
+          console.error('❌ Error creating Commission party for new user:', partyError);
+          // Don't fail the settings creation if party creation fails
+        }
       }
       
       return settings;
