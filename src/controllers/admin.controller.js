@@ -670,8 +670,23 @@ const deleteUser = async (req, res) => {
     // Clear related caches
     try {
       await setCache('admin:dashboard:stats', null, 0); // Clear stats cache
-      // Note: Redis doesn't support wildcard deletion in this way
-      // Individual cache keys should be cleared separately
+      await setCache('admin:pending-users', null, 0); // Clear pending users cache
+      
+      // Clear all admin:users:* cache keys by clearing common pagination combinations
+      const commonLimits = [10, 20, 50, 100];
+      const commonPages = [1, 2, 3, 4, 5];
+      const searchTerms = ['', 'a', 'e', 'i', 'o', 'u']; // Common search patterns
+      
+      for (const limit of commonLimits) {
+        for (const page of commonPages) {
+          for (const search of searchTerms) {
+            const cacheKey = `admin:users:${page}:${limit}:${search}`;
+            await setCache(cacheKey, null, 0);
+          }
+        }
+      }
+      
+      console.log('✅ Cleared all admin users cache keys');
     } catch (cacheError) {
       console.warn('Cache clearing failed:', cacheError);
     }
@@ -911,6 +926,22 @@ const approveUser = async (req, res) => {
     try {
       await setCache('admin:pending-users', null, 0);
       await setCache('admin:dashboard:stats', null, 0);
+      
+      // Clear all admin:users:* cache keys by clearing common pagination combinations
+      const commonLimits = [10, 20, 50, 100];
+      const commonPages = [1, 2, 3, 4, 5];
+      const searchTerms = ['', 'a', 'e', 'i', 'o', 'u']; // Common search patterns
+      
+      for (const limit of commonLimits) {
+        for (const page of commonPages) {
+          for (const search of searchTerms) {
+            const cacheKey = `admin:users:${page}:${limit}:${search}`;
+            await setCache(cacheKey, null, 0);
+          }
+        }
+      }
+      
+      console.log('✅ Cleared all admin users cache keys');
     } catch (cacheError) {
       console.warn('Cache clearing failed:', cacheError);
     }
@@ -994,6 +1025,22 @@ const disapproveUser = async (req, res) => {
     try {
       await setCache('admin:pending-users', null, 0);
       await setCache('admin:dashboard:stats', null, 0);
+      
+      // Clear all admin:users:* cache keys by clearing common pagination combinations
+      const commonLimits = [10, 20, 50, 100];
+      const commonPages = [1, 2, 3, 4, 5];
+      const searchTerms = ['', 'a', 'e', 'i', 'o', 'u']; // Common search patterns
+      
+      for (const limit of commonLimits) {
+        for (const page of commonPages) {
+          for (const search of searchTerms) {
+            const cacheKey = `admin:users:${page}:${limit}:${search}`;
+            await setCache(cacheKey, null, 0);
+          }
+        }
+      }
+      
+      console.log('✅ Cleared all admin users cache keys');
     } catch (cacheError) {
       console.warn('Cache clearing failed:', cacheError);
     }
