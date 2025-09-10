@@ -759,6 +759,59 @@ const recalculateAllBalances = async (req, res) => {
 };
 
 /**
+ * Find related transactions (company and commission) for a given party transaction
+ */
+const findRelatedTransactions = async (userId, partyName, amount, date, remarks) => {
+  try {
+    console.log(`🔍 Finding related transactions for: ${partyName} - ${amount} on ${date}`);
+    
+    // Get user settings to find company name
+    const UserSettings = require('../models/supabase/UserSettings');
+    const userSettings = await UserSettings.findByUserId(userId);
+    const companyName = userSettings?.company_account || 'AQC';
+    
+    const relatedTransactions = [];
+    
+    // Find company transactions with same amount and date
+    const companyEntries = await LedgerEntry.findByUserIdAndParty(userId, companyName);
+    for (const entry of companyEntries) {
+      const entryAmount = entry.tns_type === 'CR' ? entry.credit : entry.debit;
+      if (entryAmount === amount && entry.date === date && !entry.is_old_record) {
+        // Check if this looks like a related transaction
+        if (entry.remarks?.includes(partyName) || 
+            entry.remarks?.includes('Commission') ||
+            entry.remarks?.includes('Company') ||
+            entry.remarks?.includes('AQC')) {
+          relatedTransactions.push(entry);
+          console.log(`🔍 Found related company transaction: ${entry.id} - ${entryAmount}`);
+        }
+      }
+    }
+    
+    // Find commission transactions with same amount and date
+    const commissionEntries = await LedgerEntry.findByUserIdAndParty(userId, 'Commission');
+    for (const entry of commissionEntries) {
+      const entryAmount = entry.tns_type === 'CR' ? entry.credit : entry.debit;
+      if (entryAmount === amount && entry.date === date && !entry.is_old_record) {
+        // Check if this looks like a related transaction
+        if (entry.remarks?.includes(partyName) || 
+            entry.remarks?.includes('Commission') ||
+            entry.remarks?.includes(companyName)) {
+          relatedTransactions.push(entry);
+          console.log(`🔍 Found related commission transaction: ${entry.id} - ${entryAmount}`);
+        }
+      }
+    }
+    
+    console.log(`🔍 Found ${relatedTransactions.length} related transactions`);
+    return relatedTransactions;
+  } catch (error) {
+    console.error('❌ Error finding related transactions:', error);
+    return [];
+  }
+};
+
+/**
  * Delete ledger entry with balance recalculation
  */
 const deleteEntry = async (req, res) => {
@@ -779,16 +832,53 @@ const deleteEntry = async (req, res) => {
 
     // Store party name before deletion for balance recalculation
     const partyName = entry.party_name;
+    const entryAmount = entry.tns_type === 'CR' ? entry.credit : entry.debit;
+    const entryDate = entry.date;
+    const entryRemarks = entry.remarks;
 
+    console.log(`🗑️ Deleting entry: ${partyName} - ${entryAmount} on ${entryDate}`);
+
+    // Find and delete related transactions (company and commission)
+    const relatedTransactions = await findRelatedTransactions(userId, partyName, entryAmount, entryDate, entryRemarks);
+    
+    let deletedCount = 1; // Original entry
+    let relatedDeletedCount = 0;
+
+    // Delete related transactions first
+    for (const relatedEntry of relatedTransactions) {
+      try {
+        console.log(`🗑️ Deleting related transaction: ${relatedEntry.party_name} - ${relatedEntry.tns_type === 'CR' ? relatedEntry.credit : relatedEntry.debit} on ${relatedEntry.date}`);
+        await LedgerEntry.delete(relatedEntry.id);
+        relatedDeletedCount++;
+        deletedCount++;
+      } catch (error) {
+        console.error(`❌ Error deleting related transaction ${relatedEntry.id}:`, error);
+      }
+    }
+
+    // Delete the original entry
     await LedgerEntry.delete(id);
     
-    // Recalculate balances for all remaining entries of this party
-    await recalculateAllBalancesForParty(userId, partyName);
+    // Recalculate balances for all parties involved
+    const allParties = [partyName, ...relatedTransactions.map(t => t.party_name)];
+    for (const party of allParties) {
+      await recalculateAllBalancesForParty(userId, party);
+      await invalidateCache(userId, null, party);
+    }
     
     // Invalidate Final Trial Balance cache to ensure real-time data
     await invalidateCache(userId, null, partyName);
 
-    sendSuccessResponse(res, { deleted: true }, 'Entry deleted successfully with balance recalculation');
+    const message = relatedDeletedCount > 0 
+      ? `Entry and ${relatedDeletedCount} related transactions deleted successfully (${deletedCount} total)`
+      : 'Entry deleted successfully';
+
+    sendSuccessResponse(res, { 
+      deleted: true, 
+      deletedCount,
+      relatedDeletedCount,
+      relatedParties: relatedTransactions.map(t => t.party_name)
+    }, message);
   } catch (error) {
     sendErrorResponse(res, 500, 'Failed to delete entry', error);
   }
