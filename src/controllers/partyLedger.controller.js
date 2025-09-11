@@ -141,9 +141,19 @@ const getAllParties = async (req, res) => {
  * @param {Object} res - Express response object
  */
 const getPartyLedger = async (req, res) => {
+  const startTime = Date.now();
   try {
     const partyName = validatePartyName(req.params.partyName);
     const userId = validateUserId(req.user.id);
+    
+    // Check cache first for faster response
+    const cacheKey = `party-ledger-${userId}-${partyName}`;
+    const cachedData = await getCache(cacheKey);
+    
+    if (cachedData) {
+      console.log(`⚡ Cache hit for party ledger: ${partyName} (${Date.now() - startTime}ms)`);
+      return sendSuccessResponse(res, cachedData, `Ledger data retrieved from cache for '${partyName}'`);
+    }
     
     // Validate party exists
     const parties = await Party.findByUserId(userId);
@@ -291,7 +301,7 @@ const getPartyLedger = async (req, res) => {
       finalBalance: mondayFinalEntries.length > 0 ? parseFloat(mondayFinalEntries[mondayFinalEntries.length - 1].balance || 0) : 0
     };
 
-    sendSuccessResponse(res, {
+    const responseData = {
       ledgerEntries: sortedCurrentEntries,
       oldRecords: sortedOldRecords,
       closingBalance,
@@ -302,7 +312,15 @@ const getPartyLedger = async (req, res) => {
         totalEntries
       },
       mondayFinalData
-    });
+    };
+
+    // Cache the response for 2 minutes for faster subsequent requests
+    await setCache(cacheKey, responseData, 120); // 2 minutes cache
+    
+    const duration = Date.now() - startTime;
+    console.log(`⚡ Party ledger loaded: ${partyName} (${duration}ms)`);
+    
+    sendSuccessResponse(res, responseData);
   } catch (error) {
     sendErrorResponse(res, 500, 'Failed to get party ledger', error);
   }

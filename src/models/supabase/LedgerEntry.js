@@ -18,9 +18,10 @@ class LedgerEntry {
 
   static async findByPartyName(userId, partyName, isOldRecord = null) {
     try {
+      // Optimized query with specific columns only
       let query = supabase
         .from('ledger_entries')
-        .select('*')
+        .select('id, date, remarks, tns_type, credit, debit, balance, party_name, is_old_record, created_at, ti')
         .eq('user_id', userId)
         .eq('party_name', partyName)
         .order('date', { ascending: true })
