@@ -146,14 +146,14 @@ const getPartyLedger = async (req, res) => {
     const partyName = validatePartyName(req.params.partyName);
     const userId = validateUserId(req.user.id);
     
-    // Check cache first for faster response
-    const cacheKey = `party-ledger-${userId}-${partyName}`;
-    const cachedData = await getCache(cacheKey);
+    // Skip cache for real-time data - data changes frequently
+    // const cacheKey = `party-ledger-${userId}-${partyName}`;
+    // const cachedData = await getCache(cacheKey);
     
-    if (cachedData) {
-      console.log(`⚡ Cache hit for party ledger: ${partyName} (${Date.now() - startTime}ms)`);
-      return sendSuccessResponse(res, cachedData, `Ledger data retrieved from cache for '${partyName}'`);
-    }
+    // if (cachedData) {
+    //   console.log(`⚡ Cache hit for party ledger: ${partyName} (${Date.now() - startTime}ms)`);
+    //   return sendSuccessResponse(res, cachedData, `Ledger data retrieved from cache for '${partyName}'`);
+    // }
     
     // Validate party exists
     const parties = await Party.findByUserId(userId);
@@ -182,10 +182,14 @@ const getPartyLedger = async (req, res) => {
       };
       }
     
-    // Get all ledger entries for this party
+    // Get all ledger entries for this party with optimized query
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
+    // Early return if no entries to avoid unnecessary processing
     if (!allEntries || allEntries.length === 0) {
+      const duration = Date.now() - startTime;
+      console.log(`⚡ No entries found for party: ${partyName} (${duration}ms)`);
+      
       return sendSuccessResponse(res, {
         ledgerEntries: [],
         oldRecords: [],
@@ -314,8 +318,8 @@ const getPartyLedger = async (req, res) => {
       mondayFinalData
     };
 
-    // Cache the response for 2 minutes for faster subsequent requests
-    await setCache(cacheKey, responseData, 120); // 2 minutes cache
+    // Skip caching for real-time data - data changes frequently
+    // await setCache(cacheKey, responseData, 120); // 2 minutes cache
     
     const duration = Date.now() - startTime;
     console.log(`⚡ Party ledger loaded: ${partyName} (${duration}ms)`);
