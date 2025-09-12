@@ -155,32 +155,15 @@ const getPartyLedger = async (req, res) => {
     //   return sendSuccessResponse(res, cachedData, `Ledger data retrieved from cache for '${partyName}'`);
     // }
     
-    // Validate party exists
+    // Validate party exists - all parties are real
     const parties = await Party.findByUserId(userId);
     
-    // Allow virtual parties dynamically without database validation
-    const isVirtualParty = partyName.toLowerCase().includes('commission') ||
-                          partyName.toLowerCase().includes('aqc') ||
-                          partyName.toLowerCase().includes('company') ||
-                          partyName.toLowerCase().includes('comp') ||
-                          partyName.toLowerCase().includes('auto-calculated');
+    // Check if party exists in database
+    const party = parties.find(p => p.party_name === partyName);
     
-    let party = null;
-    if (!isVirtualParty) {
-      // Only validate real parties
-      party = parties.find(p => p.party_name === partyName);
-      
-      if (!party) {
-        return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
-      }
-    } else {
-      // For virtual parties, create a virtual party object
-      party = {
-        party_name: partyName,
-        status: 'A', // Active
-        monday_final: 'No'
-      };
-      }
+    if (!party) {
+      return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
+    }
     
     // Get all ledger entries for this party with optimized query
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
@@ -401,32 +384,15 @@ const addEntry = async (req, res) => {
       return sendErrorResponse(res, 400, 'Party name, date, and transaction type are required');
     }
 
-    // Check if party exists
+    // Check if party exists - all parties are real
     const parties = await Party.findByUserId(userId);
     
-    // Allow virtual parties dynamically without database validation
-    const isVirtualParty = partyName.toLowerCase().includes('commission') ||
-                          partyName.toLowerCase().includes('aqc') ||
-                          partyName.toLowerCase().includes('company') ||
-                          partyName.toLowerCase().includes('comp') ||
-                          partyName.toLowerCase().includes('auto-calculated');
+    // Find party in database
+    const party = parties.find(p => p.party_name === partyName);
     
-    let party = null;
-    if (!isVirtualParty) {
-      // Only validate real parties
-      party = parties.find(p => p.party_name === partyName);
-      
-      if (!party) {
-        return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
-      }
-    } else {
-      // For virtual parties, create a virtual party object
-      party = {
-        party_name: partyName,
-        status: 'A', // Active
-        monday_final: 'No'
-      };
-      }
+    if (!party) {
+      return sendErrorResponse(res, 404, `Party "${partyName}" not found. Available parties: ${parties.map(p => p.party_name).join(', ')}`);
+    }
 
     // Validate transaction amounts
     const debitAmount = parseFloat(debit || 0);
@@ -464,17 +430,6 @@ const addEntry = async (req, res) => {
     };
 
     const entry = await LedgerEntry.create(entryData);
-    
-    // Debug logging for virtual parties
-    if (isVirtualParty) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔍 Virtual party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: true, userId: ${userId}`);
-      }
-    } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔍 Regular party entry created: ${partyName} at ${new Date().toISOString()}, isVirtualParty: false, userId: ${userId}`);
-      }
-    }
     
     // Update all subsequent entries' balances for this party
     await updateSubsequentBalances(userId, partyName, entry.id);
