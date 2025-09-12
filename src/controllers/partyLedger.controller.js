@@ -166,7 +166,7 @@ const getPartyLedger = async (req, res) => {
     }
     
     // Get all ledger entries for this party with optimized query
-    const allEntries = await LedgerEntry.findByPartyName(userId, partyName, null);
+    const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
     // Debug logging for data consistency
     console.log(`🔍 DEBUG: Found ${allEntries ? allEntries.length : 0} entries for party: ${partyName}`);
@@ -494,7 +494,7 @@ const updateSubsequentBalances = async (userId, partyName, currentEntryId) => {
   try {
     
     // Get ALL entries for this party to recalculate from beginning
-    const allEntries = await LedgerEntry.findByPartyName(userId, partyName, null);
+    const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
     // Sort entries by date and creation time for proper chronological order
     const sortedEntries = allEntries.sort((a, b) => {
@@ -595,7 +595,7 @@ const updateEntry = async (req, res) => {
 const recalculateAllBalancesForParty = async (userId, partyName) => {
   try {
     // Get all entries for this party in chronological order
-    const allEntries = await LedgerEntry.findByPartyName(userId, partyName, null);
+    const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
     // Sort entries by date and creation time for proper chronological order
     const sortedEntries = allEntries.sort((a, b) => {
@@ -649,7 +649,7 @@ const recalculatePartyBalances = async (userId, partyName) => {
   try {
     
     // Get all entries for this party
-    const allEntries = await LedgerEntry.findByPartyName(userId, partyName, null);
+    const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
     // Sort entries by date and creation time
     const sortedEntries = allEntries.sort((a, b) => {
