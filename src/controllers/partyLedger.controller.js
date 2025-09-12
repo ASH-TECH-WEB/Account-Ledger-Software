@@ -168,6 +168,20 @@ const getPartyLedger = async (req, res) => {
     // Get all ledger entries for this party with optimized query
     const allEntries = await LedgerEntry.findByPartyName(userId, partyName);
     
+    // Debug logging for data consistency
+    console.log(`🔍 DEBUG: Found ${allEntries ? allEntries.length : 0} entries for party: ${partyName}`);
+    if (allEntries && allEntries.length > 0) {
+      console.log(`🔍 DEBUG: First entry:`, {
+        id: allEntries[0].id,
+        party_name: allEntries[0].party_name,
+        tns_type: allEntries[0].tns_type,
+        credit: allEntries[0].credit,
+        debit: allEntries[0].debit,
+        balance: allEntries[0].balance,
+        is_old_record: allEntries[0].is_old_record
+      });
+    }
+    
     // Early return if no entries to avoid unnecessary processing
     if (!allEntries || allEntries.length === 0) {
       const duration = Date.now() - startTime;
@@ -196,6 +210,19 @@ const getPartyLedger = async (req, res) => {
     // Separate current entries from old records
     const currentEntries = allEntries.filter(entry => !entry.is_old_record);
     const oldRecords = allEntries.filter(entry => entry.is_old_record);
+    
+    // Debug logging for filtering
+    console.log(`🔍 DEBUG: Filtered entries - Current: ${currentEntries.length}, Old: ${oldRecords.length}`);
+    if (currentEntries.length > 0) {
+      console.log(`🔍 DEBUG: First current entry:`, {
+        id: currentEntries[0].id,
+        party_name: currentEntries[0].party_name,
+        tns_type: currentEntries[0].tns_type,
+        credit: currentEntries[0].credit,
+        debit: currentEntries[0].debit,
+        balance: currentEntries[0].balance
+      });
+    }
 
     // Sort current entries by date and creation time
     const sortedCurrentEntries = currentEntries.sort((a, b) => {
@@ -430,6 +457,17 @@ const addEntry = async (req, res) => {
     };
 
     const entry = await LedgerEntry.create(entryData);
+    
+    // Debug logging for entry creation
+    console.log(`🔍 DEBUG: Entry created successfully:`, {
+      id: entry.id,
+      party_name: entry.party_name,
+      tns_type: entry.tns_type,
+      credit: entry.credit,
+      debit: entry.debit,
+      balance: entry.balance,
+      is_old_record: entry.is_old_record
+    });
     
     // Update all subsequent entries' balances for this party
     await updateSubsequentBalances(userId, partyName, entry.id);
