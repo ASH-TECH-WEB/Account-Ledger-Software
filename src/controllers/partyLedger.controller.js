@@ -315,9 +315,17 @@ const getPartyLedger = async (req, res) => {
       finalBalance: mondayFinalEntries.length > 0 ? parseFloat(mondayFinalEntries[mondayFinalEntries.length - 1].balance || 0) : 0
     };
 
+    // Add tnsType field to all entries for frontend compatibility
+    const addTnsTypeField = (entries) => {
+      return entries.map(entry => ({
+        ...entry,
+        tnsType: entry.tns_type
+      }));
+    };
+
     const responseData = {
-      ledgerEntries: sortedCurrentEntries,
-      oldRecords: sortedOldRecords,
+      ledgerEntries: addTnsTypeField(sortedCurrentEntries),
+      oldRecords: addTnsTypeField(sortedOldRecords),
       closingBalance,
       summary: {
         totalCredit,
@@ -477,6 +485,7 @@ const addEntry = async (req, res) => {
     
     sendSuccessResponse(res, {
       ...entry,
+      tnsType: entry.tns_type, // Add tnsType field for frontend compatibility
       calculatedBalance,
       partyName,
       transactionType: tnsType,

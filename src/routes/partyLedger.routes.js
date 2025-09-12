@@ -4,6 +4,8 @@
  * Defines API endpoints for party ledger management and transactions
  * in the Account Ledger Software.
  * 
+ * All endpoints now use the original controller for consistency and completeness.
+ * 
  * Endpoints:
  * - GET / - Get all parties for ledger view
  * - GET /:partyName - Get ledger entries for specific party
@@ -13,7 +15,7 @@
  * - DELETE /parties - Delete multiple parties
  * 
  * @author Account Ledger Team
- * @version 1.0.0
+ * @version 2.0.0 - All functions use original controller
  */
 
 const express = require('express');
@@ -33,20 +35,14 @@ const {
   deleteMondayFinalEntry
 } = require('../controllers/partyLedger.controller');
 
-const { getPartyLedgerOptimized } = require('../controllers/partyLedgerOptimized.controller');
-const { 
-  getPartyLedgerUltraOptimized, 
-  getAllPartiesUltraOptimized 
-} = require('../controllers/partyLedgerUltraOptimized.controller');
-
 // Apply authentication to all routes
 router.use(authenticateToken);
 
-// Get all parties for ledger (optimized version)
+// Get all parties for ledger (original version)
 router.get('/', getAllParties);
 
-// Get ledger for specific party (optimized version)
-router.get('/:partyName', getPartyLedgerOptimized);
+// Get ledger for specific party (original version)
+router.get('/:partyName', getPartyLedger);
 
 // Add new ledger entry
 router.post('/entry', addEntry);
