@@ -25,14 +25,7 @@ const {
   getUserById,
   getPendingUsers,
   approveUser,
-  disapproveUser,
-  createUser,
-  updateUser,
-  toggleUserStatus,
-  updateUserRole,
-  bulkUserActions,
-  getUserActivity,
-  exportUsers
+  disapproveUser
 } = require('../controllers/admin.controller');
 
 // Batch API - Get all dashboard data in single request
@@ -49,21 +42,10 @@ router.get('/users', getAllUsers);
 // System health check
 router.get('/health', getSystemHealth);
 
-// Enhanced User management routes
-router.post('/users', createUser);
+// User management routes
 router.get('/users/:userId', getUserById);
-router.put('/users/:userId', updateUser);
 router.delete('/users/:userId', deleteUser);
 router.put('/users/:userId/reset-password', resetUserPassword);
-router.put('/users/:userId/toggle-status', toggleUserStatus);
-router.put('/users/:userId/role', updateUserRole);
-router.get('/users/:userId/activity', getUserActivity);
-
-// Bulk operations
-router.post('/users/bulk-actions', bulkUserActions);
-
-// Export functionality
-router.get('/users/export', exportUsers);
 
 // User approval routes
 router.get('/pending-users', getPendingUsers);
@@ -74,21 +56,14 @@ router.delete('/users/:userId/disapprove', disapproveUser);
 router.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Enhanced Admin API is running',
+    message: 'Admin API is running',
     endpoints: {
       stats: 'GET /stats - Dashboard statistics',
-      users: 'GET /users - User management with pagination and search',
+      users: 'GET /users - User management',
       health: 'GET /health - System health status',
-      createUser: 'POST /users - Create new user',
       getUser: 'GET /users/:userId - Get user details',
-      updateUser: 'PUT /users/:userId - Update user information',
       deleteUser: 'DELETE /users/:userId - Delete user',
       resetPassword: 'PUT /users/:userId/reset-password - Reset user password',
-      toggleStatus: 'PUT /users/:userId/toggle-status - Enable/Disable user',
-      updateRole: 'PUT /users/:userId/role - Update user role',
-      getUserActivity: 'GET /users/:userId/activity - Get user activity log',
-      bulkActions: 'POST /users/bulk-actions - Bulk user operations',
-      exportUsers: 'GET /users/export - Export users data',
       pendingUsers: 'GET /pending-users - Get users awaiting approval',
       approveUser: 'PUT /users/:userId/approve - Approve a user',
       disapproveUser: 'DELETE /users/:userId/disapprove - Disapprove a user'
