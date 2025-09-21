@@ -642,25 +642,49 @@ if (process.env.NODE_ENV === 'development') {
  * - If environment wrong: Check NODE_ENV
  */
 app.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Server is running',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV
-  });
+  try {
+    res.json({
+      success: true,
+      message: 'Server is running',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV,
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+      hasJwtSecret: !!process.env.JWT_SECRET
+    });
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Also provide health endpoint at /api/health for API consistency
 app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'API Server is running',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
-    version: '1.0.0'
-  });
+  try {
+    res.json({
+      success: true,
+      message: 'API Server is running',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV,
+      version: '1.0.0',
+      hasSupabaseUrl: !!process.env.SUPABASE_URL,
+      hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
+      hasJwtSecret: !!process.env.JWT_SECRET
+    });
+  } catch (error) {
+    console.error('API Health check error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Performance monitoring endpoint
