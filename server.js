@@ -52,6 +52,38 @@ const rateLimit = require('express-rate-limit');
 const NodeCache = require('node-cache');
 require('dotenv').config();
 
+// Initialize Express application early for test endpoints
+const app = express();
+
+// Simple test endpoint that doesn't require any dependencies - FIRST
+app.get('/test', (req, res) => {
+  // Add basic CORS headers
+  res.header('Access-Control-Allow-Origin', 'https://escrow-account-ledger.web.app');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  res.json({
+    status: 'OK',
+    message: 'Server is working',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get('/api/test', (req, res) => {
+  // Add basic CORS headers
+  res.header('Access-Control-Allow-Origin', 'https://escrow-account-ledger.web.app');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  res.json({
+    status: 'OK', 
+    message: 'API is working',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
 // Database and route imports
 const { testConnection: testSupabaseConnection } = require('./src/config/supabase');
 const authRoutes = require('./src/routes/auth.routes');
@@ -64,8 +96,7 @@ const commissionTransactionRoutes = require('./src/routes/commissionTransaction.
 const uploadRoutes = require('./src/routes/upload.routes');
 const adminRoutes = require('./src/routes/admin.routes');
 
-// Initialize Express application
-const app = express();
+// PORT configuration
 const PORT = process.env.PORT || 5000;
 
 /**
