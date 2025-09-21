@@ -52,11 +52,9 @@ const getDashboardData = async (req, res) => {
     const cachedData = await getCache(cacheKey);
     
     if (cachedData) {
-      console.log(`🚀 Dashboard data from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedData, 'Dashboard data from cache');
     }
 
-    console.log('🔄 Fetching fresh dashboard data from database...');
 
     // Run all queries in parallel for maximum speed
     const [
@@ -105,7 +103,6 @@ const getDashboardData = async (req, res) => {
     await setCache(cacheKey, dashboardData, 300);
 
     const loadTime = Date.now() - startTime;
-    console.log(`⚡ Dashboard data loaded in ${loadTime}ms`);
 
     sendSuccessResponse(res, dashboardData, `Dashboard data retrieved successfully in ${loadTime}ms`);
   } catch (error) {
@@ -282,11 +279,9 @@ const getDashboardStats = async (req, res) => {
     const cachedStats = await getCache(cacheKey);
     
     if (cachedStats) {
-      console.log(`📊 Stats from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedStats, 'Dashboard stats from cache');
     }
 
-    console.log('🔄 Fetching fresh stats from database...');
 
     // Run all queries in parallel for maximum speed
     const [
@@ -361,7 +356,6 @@ const getDashboardStats = async (req, res) => {
     await setCache(cacheKey, stats, 600);
 
     const loadTime = Date.now() - startTime;
-    console.log(`⚡ Stats loaded in ${loadTime}ms`);
 
     sendSuccessResponse(res, stats, `Dashboard statistics retrieved successfully in ${loadTime}ms`);
   } catch (error) {
@@ -388,11 +382,9 @@ const getAllUsers = async (req, res) => {
     const cachedUsers = await getCache(cacheKey);
     
     if (cachedUsers) {
-      console.log(`👥 Users from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedUsers, 'Users from cache');
     }
 
-    console.log('🔄 Fetching fresh users from database...');
 
     let query = supabase
       .from('users')
@@ -484,7 +476,6 @@ const getAllUsers = async (req, res) => {
     await setCache(cacheKey, result, 600);
 
     const loadTime = Date.now() - startTime;
-    console.log(`⚡ Users loaded in ${loadTime}ms`);
 
     sendSuccessResponse(res, result, `Users retrieved successfully in ${loadTime}ms`);
   } catch (error) {
@@ -506,11 +497,9 @@ const getSystemHealth = async (req, res) => {
     const cachedHealth = await getCache(cacheKey);
     
     if (cachedHealth) {
-      console.log(`🏥 Health from cache in ${Date.now() - startTime}ms`);
       return sendSuccessResponse(res, cachedHealth, 'System health from cache');
     }
 
-    console.log('🔄 Checking system health...');
 
     const health = {
       database: 'online',
@@ -560,7 +549,6 @@ const getSystemHealth = async (req, res) => {
     await setCache(cacheKey, health, 120);
 
     const loadTime = Date.now() - startTime;
-    console.log(`⚡ Health checked in ${loadTime}ms`);
 
     sendSuccessResponse(res, health, `System health retrieved successfully in ${loadTime}ms`);
   } catch (error) {
@@ -582,7 +570,6 @@ const deleteUser = async (req, res) => {
       return sendErrorResponse(res, 400, 'User ID is required');
     }
 
-    console.log('🗑️ Starting admin user deletion for user:', userId);
 
     // Get user details before deletion
     const { data: user, error: userFetchError } = await supabase
@@ -596,7 +583,6 @@ const deleteUser = async (req, res) => {
       return sendErrorResponse(res, 404, 'User not found');
     }
 
-    console.log('✅ User found for deletion:', {
       id: user.id,
       email: user.email,
       firebaseUid: user.firebase_uid,
@@ -613,7 +599,6 @@ const deleteUser = async (req, res) => {
     if (ledgerError) {
       console.warn('⚠️ Warning: Could not delete ledger entries for user:', ledgerError);
     } else {
-      console.log('✅ Ledger entries deleted for user:', userId);
     }
 
     // Delete parties
@@ -625,7 +610,6 @@ const deleteUser = async (req, res) => {
     if (partiesError) {
       console.warn('⚠️ Warning: Could not delete parties for user:', partiesError);
     } else {
-      console.log('✅ Parties deleted for user:', userId);
     }
 
     // Delete user settings
@@ -1058,6 +1042,394 @@ const disapproveUser = async (req, res) => {
   }
 };
 
+/**
+ * Create a new user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const createUser = async (req, res) => {
+  try {
+    const { name, email, phone, city, state, role = 'user', password } = req.body;
+
+    if (!name || !email || !password) {
+      return sendErrorResponse(res, 400, 'Name, email, and password are required');
+    }
+
+    // Check if user already exists
+    const { data: existingUser, error: checkError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (existingUser) {
+      return sendErrorResponse(res, 409, 'User with this email already exists');
+    }
+
+    // Create user in database
+    const { data: newUser, error } = await supabase
+      .from('users')
+      .insert([{
+        name,
+        email,
+        phone,
+        city,
+        state,
+        role,
+        is_approved: true, // Admin created users are auto-approved
+        approved_at: new Date().toISOString(),
+        auth_provider: 'email',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Clear cache
+    await setCache('admin:users:*', null, 0);
+    await setCache('admin:dashboard-data:*', null, 0);
+
+    console.log('✅ User created successfully by admin:', newUser.id);
+    sendSuccessResponse(res, newUser, 'User created successfully');
+  } catch (error) {
+    console.error('❌ Create user error:', error);
+    sendErrorResponse(res, 500, 'Failed to create user', error);
+  }
+};
+
+/**
+ * Update user information
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const updateUser = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { name, email, phone, city, state, role, status } = req.body;
+
+    if (!userId) {
+      return sendErrorResponse(res, 400, 'User ID is required');
+    }
+
+    // Build update object
+    const updateData = {
+      updated_at: new Date().toISOString()
+    };
+
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (city !== undefined) updateData.city = city;
+    if (state !== undefined) updateData.state = state;
+    if (role !== undefined) updateData.role = role;
+    if (status !== undefined) updateData.status = status;
+
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Clear cache
+    await setCache('admin:users:*', null, 0);
+    await setCache('admin:dashboard-data:*', null, 0);
+
+    console.log('✅ User updated successfully:', userId);
+    sendSuccessResponse(res, updatedUser, 'User updated successfully');
+  } catch (error) {
+    console.error('❌ Update user error:', error);
+    sendErrorResponse(res, 500, 'Failed to update user', error);
+  }
+};
+
+/**
+ * Toggle user status (active/inactive)
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const toggleUserStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return sendErrorResponse(res, 400, 'User ID is required');
+    }
+
+    // Get current status
+    const { data: user, error: fetchError } = await supabase
+      .from('users')
+      .select('status')
+      .eq('id', userId)
+      .single();
+
+    if (fetchError) throw fetchError;
+
+    const newStatus = user.status === 'active' ? 'inactive' : 'active';
+
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update({ 
+        status: newStatus,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Clear cache
+    await setCache('admin:users:*', null, 0);
+
+    console.log(`✅ User status toggled to ${newStatus}:`, userId);
+    sendSuccessResponse(res, updatedUser, `User status updated to ${newStatus}`);
+  } catch (error) {
+    console.error('❌ Toggle user status error:', error);
+    sendErrorResponse(res, 500, 'Failed to toggle user status', error);
+  }
+};
+
+/**
+ * Update user role
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    if (!userId || !role) {
+      return sendErrorResponse(res, 400, 'User ID and role are required');
+    }
+
+    const validRoles = ['admin', 'user', 'manager', 'viewer'];
+    if (!validRoles.includes(role)) {
+      return sendErrorResponse(res, 400, 'Invalid role. Must be one of: ' + validRoles.join(', '));
+    }
+
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update({ 
+        role,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // Clear cache
+    await setCache('admin:users:*', null, 0);
+
+    console.log(`✅ User role updated to ${role}:`, userId);
+    sendSuccessResponse(res, updatedUser, `User role updated to ${role}`);
+  } catch (error) {
+    console.error('❌ Update user role error:', error);
+    sendErrorResponse(res, 500, 'Failed to update user role', error);
+  }
+};
+
+/**
+ * Get user activity log
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const getUserActivity = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { limit = 50 } = req.query;
+
+    if (!userId) {
+      return sendErrorResponse(res, 400, 'User ID is required');
+    }
+
+    // Get user's recent transactions and party activities
+    const [transactionsResult, partiesResult] = await Promise.allSettled([
+      supabase
+        .from('ledger_entries')
+        .select('id, description, credit, debit, created_at, party_id')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit) / 2),
+      
+      supabase
+        .from('parties')
+        .select('id, name, created_at, updated_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(parseInt(limit) / 2)
+    ]);
+
+    const transactions = transactionsResult.status === 'fulfilled' ? transactionsResult.value.data || [] : [];
+    const parties = partiesResult.status === 'fulfilled' ? partiesResult.value.data || [] : [];
+
+    // Combine and format activity
+    const activity = [
+      ...transactions.map(t => ({
+        id: t.id,
+        type: 'transaction',
+        description: t.description,
+        amount: t.credit || t.debit,
+        action: t.credit ? 'credit' : 'debit',
+        timestamp: t.created_at,
+        party_id: t.party_id
+      })),
+      ...parties.map(p => ({
+        id: p.id,
+        type: 'party',
+        description: `Party created: ${p.name}`,
+        action: 'create',
+        timestamp: p.created_at
+      }))
+    ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, parseInt(limit));
+
+    sendSuccessResponse(res, activity, 'User activity retrieved successfully');
+  } catch (error) {
+    console.error('❌ Get user activity error:', error);
+    sendErrorResponse(res, 500, 'Failed to retrieve user activity', error);
+  }
+};
+
+/**
+ * Bulk user actions
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const bulkUserActions = async (req, res) => {
+  try {
+    const { action, userIds, data } = req.body;
+
+    if (!action || !userIds || !Array.isArray(userIds)) {
+      return sendErrorResponse(res, 400, 'Action and userIds array are required');
+    }
+
+    let results = [];
+
+    switch (action) {
+      case 'delete':
+        for (const userId of userIds) {
+          try {
+            const { error } = await supabase
+              .from('users')
+              .delete()
+              .eq('id', userId);
+            
+            if (error) throw error;
+            results.push({ userId, status: 'success' });
+          } catch (error) {
+            results.push({ userId, status: 'error', error: error.message });
+          }
+        }
+        break;
+
+      case 'toggle-status':
+        for (const userId of userIds) {
+          try {
+            const { data: user } = await supabase
+              .from('users')
+              .select('status')
+              .eq('id', userId)
+              .single();
+
+            const newStatus = user.status === 'active' ? 'inactive' : 'active';
+
+            const { error } = await supabase
+              .from('users')
+              .update({ status: newStatus, updated_at: new Date().toISOString() })
+              .eq('id', userId);
+            
+            if (error) throw error;
+            results.push({ userId, status: 'success', newStatus });
+          } catch (error) {
+            results.push({ userId, status: 'error', error: error.message });
+          }
+        }
+        break;
+
+      case 'update-role':
+        if (!data?.role) {
+          return sendErrorResponse(res, 400, 'Role is required for update-role action');
+        }
+
+        for (const userId of userIds) {
+          try {
+            const { error } = await supabase
+              .from('users')
+              .update({ role: data.role, updated_at: new Date().toISOString() })
+              .eq('id', userId);
+            
+            if (error) throw error;
+            results.push({ userId, status: 'success', newRole: data.role });
+          } catch (error) {
+            results.push({ userId, status: 'error', error: error.message });
+          }
+        }
+        break;
+
+      default:
+        return sendErrorResponse(res, 400, 'Invalid action. Supported actions: delete, toggle-status, update-role');
+    }
+
+    // Clear cache
+    await setCache('admin:users:*', null, 0);
+    await setCache('admin:dashboard-data:*', null, 0);
+
+    console.log(`✅ Bulk action ${action} completed for ${userIds.length} users`);
+    sendSuccessResponse(res, { results, totalProcessed: userIds.length }, `Bulk action ${action} completed`);
+  } catch (error) {
+    console.error('❌ Bulk user actions error:', error);
+    sendErrorResponse(res, 500, 'Failed to perform bulk actions', error);
+  }
+};
+
+/**
+ * Export users data
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+const exportUsers = async (req, res) => {
+  try {
+    const { format = 'json' } = req.query;
+
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, name, email, phone, city, state, role, status, is_approved, auth_provider, created_at, updated_at')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    if (format === 'csv') {
+      // Simple CSV export
+      const csvHeaders = 'ID,Name,Email,Phone,City,State,Role,Status,Approved,Auth Provider,Created At,Updated At\n';
+      const csvData = users.map(user => 
+        `${user.id},"${user.name}","${user.email}","${user.phone}","${user.city}","${user.state}","${user.role}","${user.status}","${user.is_approved}","${user.auth_provider}","${user.created_at}","${user.updated_at}"`
+      ).join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="users-export.csv"');
+      res.send(csvHeaders + csvData);
+    } else {
+      // JSON export
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="users-export.json"');
+      sendSuccessResponse(res, users, 'Users data exported successfully');
+    }
+
+    console.log(`✅ Users data exported in ${format} format`);
+  } catch (error) {
+    console.error('❌ Export users error:', error);
+    sendErrorResponse(res, 500, 'Failed to export users data', error);
+  }
+};
+
 module.exports = {
   getDashboardData,
   getDashboardStats,
@@ -1068,5 +1440,12 @@ module.exports = {
   getUserById,
   getPendingUsers,
   approveUser,
-  disapproveUser
+  disapproveUser,
+  createUser,
+  updateUser,
+  toggleUserStatus,
+  updateUserRole,
+  bulkUserActions,
+  getUserActivity,
+  exportUsers
 };

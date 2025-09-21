@@ -49,6 +49,49 @@ router.get('/party/:partyName', getPartyBalance);
 // Generate custom trial balance report
 router.post('/report', generateReport);
 
+// NEW: Batch API for getting multiple party balances at once
+router.post('/batch-balances', async (req, res) => {
+  try {
+    const { partyNames } = req.body;
+    
+    if (!partyNames || !Array.isArray(partyNames)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Party names array is required'
+      });
+    }
+
+    // Get balances for all parties in parallel
+    const balances = await Promise.all(
+      partyNames.map(async (partyName) => {
+        try {
+          const partyBalance = await getPartyBalance(req, res, true); // Silent mode
+          return {
+            partyName,
+            closingBalance: partyBalance?.balance || 0
+          };
+        } catch (error) {
+          return {
+            partyName,
+            closingBalance: 0
+          };
+        }
+      })
+    );
+
+    res.json({
+      success: true,
+      data: balances
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get batch balances',
+      error: error.message
+    });
+  }
+});
+
 // Clear cache (for performance optimization)
 router.delete('/cache', clearCache);
 
