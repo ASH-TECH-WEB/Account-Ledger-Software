@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
+      "src": "minimal-server.js",
       "use": "@vercel/node",
       "config": {
         "maxLambdaSize": "50mb",
@@ -14,7 +14,7 @@
   "routes": [
     {
       "src": "/api/dashboard/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
         "X-Content-Type-Options": "nosniff",
@@ -23,7 +23,7 @@
     },
     {
       "src": "/api/parties/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=120, stale-while-revalidate=300",
         "X-Content-Type-Options": "nosniff"
@@ -31,7 +31,7 @@
     },
     {
       "src": "/api/party-ledger/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=120, stale-while-revalidate=300",
         "X-Content-Type-Options": "nosniff"
@@ -39,7 +39,7 @@
     },
     {
       "src": "/api/final-trial-balance/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
         "X-Content-Type-Options": "nosniff"
@@ -47,7 +47,7 @@
     },
     {
       "src": "/api/settings/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=300, stale-while-revalidate=600",
         "X-Content-Type-Options": "nosniff"
@@ -55,7 +55,7 @@
     },
     {
       "src": "/api/(.*)",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "s-maxage=60, stale-while-revalidate=120",
         "X-Content-Type-Options": "nosniff"
@@ -63,14 +63,14 @@
     },
     {
       "src": "/health",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate"
       }
     },
     {
       "src": "/api/health",
-      "dest": "/server.js",
+      "dest": "/minimal-server.js",
       "headers": {
         "Cache-Control": "no-cache, no-store, must-revalidate"
       }
